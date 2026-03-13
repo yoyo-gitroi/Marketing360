@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 
 interface OrgData {
   id: string;
@@ -12,11 +11,11 @@ interface OrgData {
 }
 
 export default function SettingsPage() {
-  const supabase = createClient();
   const router = useRouter();
 
   const [org, setOrg] = useState<OrgData | null>(null);
   const [role, setRole] = useState<string>("member");
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [orgName, setOrgName] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -27,55 +26,27 @@ export default function SettingsPage() {
 
   useEffect(() => {
     async function fetchSettings() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.push("/login");
-        return;
-      }
-
-      // Try org_members first for role + org data
-      const { data: membership } = await supabase
-        .from("org_members")
-        .select("role, organizations(id, name, slug, created_at)")
-        .eq("user_id", user.id)
-        .single();
-
-      if (membership) {
-        const orgData = membership.organizations as unknown as OrgData;
-        setOrg(orgData);
-        setOrgName(orgData?.name ?? "");
-        setRole(membership.role ?? "member");
-      } else {
-        // Fallback: get org from users table
-        const { data: profile } = await supabase
-          .from("users")
-          .select("role, org_id")
-          .eq("id", user.id)
-          .single();
-
-        if (profile?.org_id) {
-          const { data: orgData } = await supabase
-            .from("organizations")
-            .select("id, name, slug, created_at")
-            .eq("id", profile.org_id)
-            .single();
-
-          if (orgData) {
-            setOrg(orgData);
-            setOrgName(orgData.name ?? "");
-          }
-          setRole(profile.role ?? "member");
+      try {
+        const res = await fetch("/api/me");
+        if (!res.ok) {
+          router.push("/login");
+          return;
         }
-      }
 
-      setLoading(false);
+        const data = await res.json();
+        setOrg(data.org);
+        setOrgName(data.org?.name ?? "");
+        setRole(data.role ?? "member");
+        setIsSuperAdmin(data.isSuperAdmin ?? false);
+      } catch {
+        router.push("/login");
+      } finally {
+        setLoading(false);
+      }
     }
 
     fetchSettings();
-  }, [supabase, router]);
+  }, [router]);
 
   async function handleSave() {
     if (!org || !orgName.trim()) return;
@@ -83,19 +54,25 @@ export default function SettingsPage() {
     setSaving(true);
     setSaveMessage(null);
 
-    const { error } = await supabase
-      .from("organizations")
-      .update({ name: orgName.trim(), updated_at: new Date().toISOString() })
-      .eq("id", org.id);
+    try {
+      const res = await fetch("/api/settings/update-org", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId: org.id, name: orgName.trim() }),
+      });
 
-    if (error) {
-      setSaveMessage({ type: "error", text: "Failed to save: " + error.message });
-    } else {
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Failed to save");
+      }
+
       setOrg({ ...org, name: orgName.trim() });
       setSaveMessage({ type: "success", text: "Organization name saved." });
+    } catch (err: any) {
+      setSaveMessage({ type: "error", text: err.message ?? "Failed to save" });
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(false);
   }
 
   if (loading) {
@@ -106,11 +83,18 @@ export default function SettingsPage() {
     );
   }
 
-  const canEdit = role === "owner" || role === "admin";
+  const canEdit = role === "owner" || role === "admin" || isSuperAdmin;
 
   return (
     <div className="mx-auto max-w-3xl py-10 px-4">
-      <h1 className="text-2xl font-bold mb-1">Organization Settings</h1>
+      <div className="flex items-center gap-3 mb-1">
+        <h1 className="text-2xl font-bold">Organization Settings</h1>
+        {isSuperAdmin && (
+          <span className="inline-flex items-center rounded-full bg-red-100 border border-red-200 px-2.5 py-0.5 text-xs font-medium text-red-800">
+            Super Admin
+          </span>
+        )}
+      </div>
       <p className="text-sm text-gray-500 mb-8">
         Manage your organization details and preferences.
       </p>

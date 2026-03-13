@@ -10,11 +10,14 @@ import {
   Megaphone,
   Settings,
   LogOut,
+  Shield,
 } from 'lucide-react';
 
-interface UserProfile {
-  full_name: string;
-  email: string;
+interface UserContext {
+  user: { id: string; email: string; full_name: string };
+  org: { id: string; name: string; slug: string } | null;
+  role: string;
+  isSuperAdmin: boolean;
 }
 
 const navItems = [
@@ -32,39 +35,25 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const supabase = createClient();
-  const [user, setUser] = useState<UserProfile | null>(null);
+  const [ctx, setCtx] = useState<UserContext | null>(null);
 
   useEffect(() => {
-    async function getUser() {
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
-
-      if (!authUser) {
+    async function loadContext() {
+      try {
+        const res = await fetch('/api/me');
+        if (!res.ok) {
+          router.push('/login');
+          return;
+        }
+        const data: UserContext = await res.json();
+        setCtx(data);
+      } catch {
         router.push('/login');
-        return;
-      }
-
-      // Try to get user profile from users table
-      const { data: profile } = await supabase
-        .from('users')
-        .select('full_name, email')
-        .eq('id', authUser.id)
-        .single();
-
-      if (profile) {
-        setUser(profile);
-      } else {
-        setUser({
-          full_name:
-            authUser.user_metadata?.full_name ?? authUser.email ?? 'User',
-          email: authUser.email ?? '',
-        });
       }
     }
 
-    getUser();
-  }, [supabase, router]);
+    loadContext();
+  }, [router]);
 
   async function handleSignOut() {
     await supabase.auth.signOut();
@@ -77,8 +66,8 @@ export default function DashboardLayout({
     return pathname.startsWith(href);
   }
 
-  const initials = user?.full_name
-    ? user.full_name
+  const initials = ctx?.user.full_name
+    ? ctx.user.full_name
         .split(' ')
         .map((n) => n[0])
         .join('')
@@ -121,16 +110,22 @@ export default function DashboardLayout({
 
         {/* User footer */}
         <div className="border-t border-gray-200 p-4">
+          {ctx?.isSuperAdmin && (
+            <div className="mb-3 flex items-center gap-1.5 rounded-md bg-red-50 border border-red-200 px-2 py-1.5">
+              <Shield className="w-3.5 h-3.5 text-red-600" />
+              <span className="text-xs font-medium text-red-700">Super Admin</span>
+            </div>
+          )}
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-medium">
               {initials}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">
-                {user?.full_name ?? 'Loading...'}
+                {ctx?.user.full_name ?? 'Loading...'}
               </p>
               <p className="text-xs text-gray-500 truncate">
-                {user?.email ?? ''}
+                {ctx?.user.email ?? ''}
               </p>
             </div>
             <button

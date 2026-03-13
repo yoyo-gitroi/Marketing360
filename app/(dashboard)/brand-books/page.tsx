@@ -44,21 +44,15 @@ export default function BrandBooksPage() {
     async function fetchBrandBooks() {
       setLoading(true);
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
+      // Use /api/me to get org context (bypasses RLS for super admin)
+      const meRes = await fetch('/api/me');
+      if (!meRes.ok) {
         router.push('/login');
         return;
       }
+      const me = await meRes.json();
 
-      const { data: profile } = await supabase
-        .from('users')
-        .select('org_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!profile?.org_id) {
+      if (!me.org?.id) {
         setLoading(false);
         return;
       }
@@ -66,7 +60,7 @@ export default function BrandBooksPage() {
       let query = supabase
         .from('brand_books')
         .select('id, name, client_name, status, current_step, updated_at')
-        .eq('org_id', profile.org_id)
+        .eq('org_id', me.org.id)
         .order('updated_at', { ascending: false });
 
       if (statusFilter !== 'all') {
