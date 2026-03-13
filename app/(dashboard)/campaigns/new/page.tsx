@@ -116,7 +116,7 @@ export default function NewCampaignPage() {
           created_by: user.id,
           status: 'draft',
           brand_book_id: sourceType === 'existing' && brandBookId ? brandBookId : null,
-          brand_book_pdf_path: uploadedPdfPath,
+          uploaded_brand_book_url: uploadedPdfPath,
         })
         .select('id')
         .single();
