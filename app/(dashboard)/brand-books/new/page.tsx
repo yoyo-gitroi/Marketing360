@@ -2,22 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
-
-const BRAND_BOOK_SECTIONS = [
-  { step_number: 1, section_key: 'brand_identity', title: 'Brand Identity' },
-  { step_number: 2, section_key: 'values_pillars', title: 'Values & Pillars' },
-  { step_number: 3, section_key: 'visual_identity', title: 'Visual Identity' },
-  { step_number: 4, section_key: 'voice_tone', title: 'Voice & Tone' },
-  { step_number: 5, section_key: 'target_audience', title: 'Target Audience' },
-  { step_number: 6, section_key: 'product_info', title: 'Product Info' },
-  { step_number: 7, section_key: 'brand_history', title: 'Brand History' },
-  { step_number: 8, section_key: 'research_synthesis', title: 'Research Synthesis' },
-];
 
 export default function NewBrandBookPage() {
   const router = useRouter();
-  const supabase = createClient();
 
   const [name, setName] = useState('');
   const [clientName, setClientName] = useState('');
@@ -30,69 +17,40 @@ export default function NewBrandBookPage() {
     setLoading(true);
 
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
+      // Get org context via /api/me
+      const meRes = await fetch('/api/me');
+      if (!meRes.ok) {
         router.push('/login');
         return;
       }
+      const me = await meRes.json();
 
-      // Get user's org_id
-      const { data: profile } = await supabase
-        .from('users')
-        .select('org_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!profile?.org_id) {
+      if (!me.org?.id) {
         setError('No organization found. Please contact support.');
         setLoading(false);
         return;
       }
 
-      // Create brand book
-      const { data: brandBook, error: createError } = await supabase
-        .from('brand_books')
-        .insert({
+      // Create brand book via API (handles super admin RLS bypass)
+      const res = await fetch('/api/brand-books/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           name,
-          client_name: clientName || null,
-          org_id: profile.org_id,
-          created_by: user.id,
-          status: 'draft',
-          current_step: 1,
-        })
-        .select('id')
-        .single();
+          clientName: clientName || null,
+          orgId: me.org.id,
+        }),
+      });
 
-      if (createError || !brandBook) {
-        setError('Failed to create brand book: ' + (createError?.message ?? 'Unknown error'));
+      const data = await res.json();
+
+      if (!res.ok && res.status !== 207) {
+        setError(data.error ?? 'Failed to create brand book.');
         setLoading(false);
         return;
       }
 
-      // Create 8 brand book sections
-      const sections = BRAND_BOOK_SECTIONS.map((section) => ({
-        brand_book_id: brandBook.id,
-        step_number: section.step_number,
-        section_key: section.section_key,
-        title: section.title,
-        status: 'pending' as const,
-        content: null,
-      }));
-
-      const { error: sectionsError } = await supabase
-        .from('brand_book_sections')
-        .insert(sections);
-
-      if (sectionsError) {
-        setError('Brand book created but failed to create sections: ' + sectionsError.message);
-        setLoading(false);
-        return;
-      }
-
-      router.push(`/brand-books/${brandBook.id}`);
+      router.push(`/brand-books/${data.id}`);
     } catch {
       setError('An unexpected error occurred.');
       setLoading(false);
