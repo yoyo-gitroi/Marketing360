@@ -8,7 +8,11 @@ export async function GET(request: Request) {
   const code = searchParams.get('code')
   const next = searchParams.get('next') ?? '/'
 
-  if (code) {
+  if (!code) {
+    return NextResponse.redirect(`${origin}/login`)
+  }
+
+  try {
     const cookieStore = await cookies()
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -28,20 +32,24 @@ export async function GET(request: Request) {
     )
 
     const { error } = await supabase.auth.exchangeCodeForSession(code)
+    if (error) {
+      console.error('OAuth code exchange failed:', error.message)
+      return NextResponse.redirect(`${origin}/login`)
+    }
 
-    if (!error) {
-      // Check if user already has a profile, if not create one
-      const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await supabase.auth.getUser()
 
-      if (user) {
-        const { data: existingUser } = await supabase
-          .from('users')
-          .select('id')
-          .eq('id', user.id)
-          .single()
+    if (user) {
+      // Check if user already has a profile
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', user.id)
+        .single()
 
-        if (!existingUser) {
-          // First-time OAuth user — create org and user profile using service role
+      if (!existingUser) {
+        // First-time OAuth user — create org and user profile using service role
+        try {
           const adminClient = createClient(
             process.env.NEXT_PUBLIC_SUPABASE_URL!,
             process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -58,8 +66,7 @@ export async function GET(request: Request) {
 
           // Find unique slug
           let slug = baseSlug
-          let attempt = 0
-          while (true) {
+          for (let attempt = 0; attempt < 10; attempt++) {
             const candidateSlug = attempt === 0 ? slug : `${slug}-${attempt}`
             const { data } = await adminClient
               .from('organizations')
@@ -70,39 +77,45 @@ export async function GET(request: Request) {
               slug = candidateSlug
               break
             }
-            attempt++
           }
 
-          const { data: org } = await adminClient
+          const { data: org, error: orgError } = await adminClient
             .from('organizations')
             .insert({ name: orgName, slug })
             .select('id')
             .single()
 
-          if (org) {
-            await adminClient.from('users').insert({
+          if (orgError) {
+            console.error('Failed to create org for OAuth user:', orgError.message)
+          } else if (org) {
+            const { error: userError } = await adminClient.from('users').insert({
               id: user.id,
               email: user.email!,
               full_name: fullName,
               org_id: org.id,
               role: 'owner',
             })
+            if (userError) {
+              console.error('Failed to create user profile for OAuth user:', userError.message)
+            }
           }
+        } catch (provisionError) {
+          console.error('OAuth user provisioning error:', provisionError)
         }
       }
-
-      const forwardedHost = request.headers.get('x-forwarded-host')
-      const isLocalEnv = process.env.NODE_ENV === 'development'
-      if (isLocalEnv) {
-        return NextResponse.redirect(`${origin}${next}`)
-      } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${next}`)
-      } else {
-        return NextResponse.redirect(`${origin}${next}`)
-      }
     }
-  }
 
-  // Auth error — redirect to login with error
-  return NextResponse.redirect(`${origin}/login`)
+    const forwardedHost = request.headers.get('x-forwarded-host')
+    const isLocalEnv = process.env.NODE_ENV === 'development'
+    if (isLocalEnv) {
+      return NextResponse.redirect(`${origin}${next}`)
+    } else if (forwardedHost) {
+      return NextResponse.redirect(`https://${forwardedHost}${next}`)
+    } else {
+      return NextResponse.redirect(`${origin}${next}`)
+    }
+  } catch (err) {
+    console.error('Auth callback error:', err)
+    return NextResponse.redirect(`${origin}/login`)
+  }
 }
