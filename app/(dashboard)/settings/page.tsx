@@ -1,8 +1,8 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
 export default async function SettingsPage() {
-  const supabase = createClient();
+  const supabase = await createServerSupabaseClient();
 
   const {
     data: { user },

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
 interface Section {
@@ -15,7 +15,7 @@ export default async function BrandBookPreviewPage({
 }: {
   params: { id: string };
 }) {
-  const supabase = createClient();
+  const supabase = await createServerSupabaseClient();
 
   const {
     data: { user },
