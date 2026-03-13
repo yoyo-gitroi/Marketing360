@@ -11,16 +11,14 @@ interface BrandBookOption {
 
 const CAMPAIGN_STAGES = [
   { stage_number: 1, stage_key: 'campaign_brief', title: 'Campaign Brief' },
-  { stage_number: 2, stage_key: 'audience_research', title: 'Audience Research' },
-  { stage_number: 3, stage_key: 'competitive_analysis', title: 'Competitive Analysis' },
-  { stage_number: 4, stage_key: 'key_messages', title: 'Key Messages' },
-  { stage_number: 5, stage_key: 'content_strategy', title: 'Content Strategy' },
-  { stage_number: 6, stage_key: 'channel_plan', title: 'Channel Plan' },
-  { stage_number: 7, stage_key: 'creative_concepts', title: 'Creative Concepts' },
-  { stage_number: 8, stage_key: 'ad_copy', title: 'Ad Copy' },
-  { stage_number: 9, stage_key: 'social_media_plan', title: 'Social Media Plan' },
-  { stage_number: 10, stage_key: 'email_sequences', title: 'Email Sequences' },
-  { stage_number: 11, stage_key: 'measurement_kpis', title: 'Measurement & KPIs' },
+  { stage_number: 2, stage_key: 'brand_reference', title: 'Brand Reference' },
+  { stage_number: 3, stage_key: 'market_research', title: 'Market Research' },
+  { stage_number: 4, stage_key: 'customer_intel', title: 'Customer Intel' },
+  { stage_number: 5, stage_key: 'platform_channel', title: 'Platform & Channel' },
+  { stage_number: 6, stage_key: 'historical_data', title: 'Historical Data' },
+  { stage_number: 7, stage_key: 'resources', title: 'Resources' },
+  { stage_number: 8, stage_key: 'hypothesis', title: 'Hypothesis' },
+  { stage_number: 9, stage_key: 'ideation_room', title: 'Ideation Room' },
 ];
 
 export default function NewCampaignPage() {

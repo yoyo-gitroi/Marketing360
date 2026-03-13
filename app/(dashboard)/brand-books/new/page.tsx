@@ -5,14 +5,14 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
 const BRAND_BOOK_SECTIONS = [
-  { step_number: 1, section_key: 'brand_overview', title: 'Brand Overview' },
-  { step_number: 2, section_key: 'mission_vision', title: 'Mission & Vision' },
-  { step_number: 3, section_key: 'target_audience', title: 'Target Audience' },
-  { step_number: 4, section_key: 'brand_personality', title: 'Brand Personality' },
-  { step_number: 5, section_key: 'visual_identity', title: 'Visual Identity' },
-  { step_number: 6, section_key: 'tone_of_voice', title: 'Tone of Voice' },
-  { step_number: 7, section_key: 'messaging_framework', title: 'Messaging Framework' },
-  { step_number: 8, section_key: 'brand_guidelines', title: 'Brand Guidelines' },
+  { step_number: 1, section_key: 'brand_identity', title: 'Brand Identity' },
+  { step_number: 2, section_key: 'values_pillars', title: 'Values & Pillars' },
+  { step_number: 3, section_key: 'visual_identity', title: 'Visual Identity' },
+  { step_number: 4, section_key: 'voice_tone', title: 'Voice & Tone' },
+  { step_number: 5, section_key: 'target_audience', title: 'Target Audience' },
+  { step_number: 6, section_key: 'product_info', title: 'Product Info' },
+  { step_number: 7, section_key: 'brand_history', title: 'Brand History' },
+  { step_number: 8, section_key: 'research_synthesis', title: 'Research Synthesis' },
 ];
 
 export default function NewBrandBookPage() {
