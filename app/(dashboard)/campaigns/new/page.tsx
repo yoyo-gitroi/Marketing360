@@ -9,18 +9,6 @@ interface BrandBookOption {
   name: string;
 }
 
-const CAMPAIGN_STAGES = [
-  { stage_number: 1, stage_key: 'campaign_brief', title: 'Campaign Brief' },
-  { stage_number: 2, stage_key: 'brand_reference', title: 'Brand Reference' },
-  { stage_number: 3, stage_key: 'market_research', title: 'Market Research' },
-  { stage_number: 4, stage_key: 'customer_intel', title: 'Customer Intel' },
-  { stage_number: 5, stage_key: 'platform_channel', title: 'Platform & Channel' },
-  { stage_number: 6, stage_key: 'historical_data', title: 'Historical Data' },
-  { stage_number: 7, stage_key: 'resources', title: 'Resources' },
-  { stage_number: 8, stage_key: 'hypothesis', title: 'Hypothesis' },
-  { stage_number: 9, stage_key: 'ideation_room', title: 'Ideation Room' },
-];
-
 export default function NewCampaignPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -31,28 +19,23 @@ export default function NewCampaignPage() {
   const [brandBookPdf, setBrandBookPdf] = useState<File | null>(null);
   const [sourceType, setSourceType] = useState<'existing' | 'pdf' | 'none'>('none');
   const [brandBooks, setBrandBooks] = useState<BrandBookOption[]>([]);
+  const [orgId, setOrgId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     async function fetchBrandBooks() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+      const meRes = await fetch('/api/me');
+      if (!meRes.ok) return;
+      const me = await meRes.json();
 
-      const { data: profile } = await supabase
-        .from('users')
-        .select('org_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!profile?.org_id) return;
+      if (!me.org?.id) return;
+      setOrgId(me.org.id);
 
       const { data } = await supabase
         .from('brand_books')
         .select('id, name')
-        .eq('org_id', profile.org_id)
+        .eq('org_id', me.org.id)
         .order('name');
 
       setBrandBooks(data ?? []);
@@ -67,31 +50,23 @@ export default function NewCampaignPage() {
     setLoading(true);
 
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.push('/login');
-        return;
-      }
-
-      const { data: profile } = await supabase
-        .from('users')
-        .select('org_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!profile?.org_id) {
-        setError('No organization found. Please contact support.');
-        setLoading(false);
-        return;
+      if (!orgId) {
+        // Try to fetch again
+        const meRes = await fetch('/api/me');
+        if (!meRes.ok) { router.push('/login'); return; }
+        const me = await meRes.json();
+        if (!me.org?.id) {
+          setError('No organization found. Please contact support.');
+          setLoading(false);
+          return;
+        }
+        setOrgId(me.org.id);
       }
 
       // Handle PDF upload if provided
       let uploadedPdfPath: string | null = null;
-      if (sourceType === 'pdf' && brandBookPdf) {
-        const fileName = `${profile.org_id}/${Date.now()}-${brandBookPdf.name}`;
+      if (sourceType === 'pdf' && brandBookPdf && orgId) {
+        const fileName = `${orgId}/${Date.now()}-${brandBookPdf.name}`;
         const { error: uploadError } = await supabase.storage
           .from('brand-book-pdfs')
           .upload(fileName, brandBookPdf);
@@ -104,48 +79,28 @@ export default function NewCampaignPage() {
         uploadedPdfPath = fileName;
       }
 
-      // Create campaign
-      const { data: campaign, error: createError } = await supabase
-        .from('campaigns')
-        .insert({
+      // Create campaign via API (handles super admin RLS bypass)
+      const res = await fetch('/api/campaigns/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           name,
-          client_name: clientName || null,
-          org_id: profile.org_id,
-          created_by: user.id,
-          status: 'draft',
-          brand_book_id: sourceType === 'existing' && brandBookId ? brandBookId : null,
-          uploaded_brand_book_url: uploadedPdfPath,
-        })
-        .select('id')
-        .single();
+          clientName: clientName || null,
+          orgId,
+          brandBookId: sourceType === 'existing' && brandBookId ? brandBookId : null,
+          uploadedBrandBookUrl: uploadedPdfPath,
+        }),
+      });
 
-      if (createError || !campaign) {
-        setError('Failed to create campaign: ' + (createError?.message ?? 'Unknown error'));
+      const data = await res.json();
+
+      if (!res.ok && res.status !== 207) {
+        setError(data.error ?? 'Failed to create campaign.');
         setLoading(false);
         return;
       }
 
-      // Create 11 campaign stages
-      const stages = CAMPAIGN_STAGES.map((stage) => ({
-        campaign_id: campaign.id,
-        stage_number: stage.stage_number,
-        stage_key: stage.stage_key,
-        title: stage.title,
-        status: 'pending' as const,
-        content: null,
-      }));
-
-      const { error: stagesError } = await supabase
-        .from('campaign_stages')
-        .insert(stages);
-
-      if (stagesError) {
-        setError('Campaign created but failed to create stages: ' + stagesError.message);
-        setLoading(false);
-        return;
-      }
-
-      router.push(`/campaigns/${campaign.id}`);
+      router.push(`/campaigns/${data.id}`);
     } catch {
       setError('An unexpected error occurred.');
       setLoading(false);
