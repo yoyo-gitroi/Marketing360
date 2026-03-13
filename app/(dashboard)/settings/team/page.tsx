@@ -40,26 +40,19 @@ export default function TeamSettingsPage() {
   async function fetchTeamMembers() {
     setLoading(true);
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+      // Use /api/me to get org (bypasses RLS for super admin)
+      const meRes = await fetch("/api/me");
+      if (!meRes.ok) return;
+      const me = await meRes.json();
 
-      // Get user's org
-      const { data: membership } = await supabase
-        .from("org_members")
-        .select("org_id")
-        .eq("user_id", user.id)
-        .single();
-
-      if (!membership) return;
-      setOrgId(membership.org_id);
+      if (!me.org?.id) return;
+      setOrgId(me.org.id);
 
       // Fetch all members with profile info
       const { data: teamMembers } = await supabase
         .from("org_members")
         .select("id, user_id, role, profiles(full_name, email)")
-        .eq("org_id", membership.org_id)
+        .eq("org_id", me.org.id)
         .order("role", { ascending: true });
 
       setMembers((teamMembers as unknown as TeamMember[]) ?? []);

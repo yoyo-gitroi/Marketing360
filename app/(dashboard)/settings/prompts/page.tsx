@@ -52,19 +52,15 @@ export default function PromptRegistryPage() {
   const fetchPrompts = useCallback(async () => {
     setLoading(true);
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+      // Use /api/me for role + org data (bypasses RLS for super admin)
+      const meRes = await fetch("/api/me");
+      if (!meRes.ok) return;
+      const me = await meRes.json();
 
-      // Check role — only admin/owner can access
-      const { data: membership } = await supabase
-        .from("org_members")
-        .select("role, org_id")
-        .eq("user_id", user.id)
-        .single();
+      const effectiveRole = me.role;
+      const orgId = me.org?.id;
 
-      if (!membership || membership.role === "member") {
+      if (!orgId || (effectiveRole === "member" && !me.isSuperAdmin)) {
         setAuthorized(false);
         setLoading(false);
         return;
@@ -75,7 +71,7 @@ export default function PromptRegistryPage() {
       const { data: promptRows } = await supabase
         .from("prompt_templates")
         .select("*")
-        .eq("org_id", membership.org_id)
+        .eq("org_id", orgId)
         .order("prompt_key", { ascending: true });
 
       if (!promptRows) {

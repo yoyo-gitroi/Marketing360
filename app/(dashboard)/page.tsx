@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createClient } from '@supabase/supabase-js';
+import { isSuperAdmin } from '@/lib/super-admin';
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
@@ -39,10 +41,19 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // Determine which client to use for data queries
+  const superAdmin = isSuperAdmin(user?.email);
+  const queryClient = superAdmin
+    ? createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      )
+    : supabase;
+
   // Get user's org_id
   let orgId: string | null = null;
   if (user) {
-    const { data: profile } = await supabase
+    const { data: profile } = await queryClient
       .from('users')
       .select('org_id')
       .eq('id', user.id)
@@ -52,7 +63,7 @@ export default async function DashboardPage() {
 
   // Fetch recent brand books
   const { data: brandBooks } = orgId
-    ? await supabase
+    ? await queryClient
         .from('brand_books')
         .select('id, name, client_name, status, updated_at, created_by')
         .eq('org_id', orgId)
@@ -62,7 +73,7 @@ export default async function DashboardPage() {
 
   // Fetch recent campaigns
   const { data: campaigns } = orgId
-    ? await supabase
+    ? await queryClient
         .from('campaigns')
         .select('id, name, client_name, status, updated_at, created_by')
         .eq('org_id', orgId)
