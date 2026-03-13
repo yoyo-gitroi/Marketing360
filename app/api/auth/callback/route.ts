@@ -56,7 +56,13 @@ export async function GET(request: Request) {
           )
 
           const fullName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'User'
-          const orgName = `${fullName}'s Organization`
+
+          // Read org name from cookie set during signup, fall back to default
+          const pendingOrgNameCookie = cookieStore.get('pending_org_name')
+          const orgName = pendingOrgNameCookie
+            ? decodeURIComponent(pendingOrgNameCookie.value)
+            : `${fullName}'s Organization`
+
           const baseSlug = orgName
             .toLowerCase()
             .trim()
@@ -98,7 +104,20 @@ export async function GET(request: Request) {
             if (userError) {
               console.error('Failed to create user profile for OAuth user:', userError.message)
             }
+
+            // Also create org_members entry
+            const { error: memberError } = await adminClient.from('org_members').insert({
+              user_id: user.id,
+              org_id: org.id,
+              role: 'owner',
+            })
+            if (memberError) {
+              console.error('Failed to create org_members entry:', memberError.message)
+            }
           }
+
+          // Clear the pending org name cookie
+          cookieStore.set('pending_org_name', '', { path: '/', maxAge: 0 })
         } catch (provisionError) {
           console.error('OAuth user provisioning error:', provisionError)
         }
