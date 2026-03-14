@@ -1,5 +1,7 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { getAdminClient } from '@/lib/db';
+import { redirect } from 'next/navigation';
 
 interface Section {
   id: string;
@@ -15,21 +17,18 @@ export default async function BrandBookPreviewPage({
 }: {
   params: { id: string };
 }) {
-  const supabase = await createServerSupabaseClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    redirect('/login');
   }
 
+  const db = getAdminClient();
+
   // Fetch brand book
-  const { data: brandBook } = await supabase
-    .from("brand_books")
-    .select("*")
-    .eq("id", params.id)
+  const { data: brandBook } = await db
+    .from('brand_books')
+    .select('*')
+    .eq('id', params.id)
     .single();
 
   if (!brandBook) {
@@ -41,12 +40,12 @@ export default async function BrandBookPreviewPage({
   }
 
   // Fetch approved sections, ordered
-  const { data: sections } = await supabase
-    .from("brand_book_sections")
-    .select("*")
-    .eq("brand_book_id", params.id)
-    .eq("status", "approved")
-    .order("order_index", { ascending: true });
+  const { data: sections } = await db
+    .from('brand_book_sections')
+    .select('*')
+    .eq('brand_book_id', params.id)
+    .eq('status', 'approved')
+    .order('order_index', { ascending: true });
 
   const approvedSections: Section[] = (sections as Section[]) ?? [];
 
@@ -89,10 +88,10 @@ export default async function BrandBookPreviewPage({
               </p>
             )}
             <div className="mt-8 text-sm text-blue-200">
-              Brand Book &middot;{" "}
-              {new Date().toLocaleDateString("en-US", {
-                year: "numeric",
-                month: "long",
+              Brand Book &middot;{' '}
+              {new Date().toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
               })}
             </div>
           </div>

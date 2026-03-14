@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { requireAuth } from '@/lib/api-auth'
 import { loadPrompt, interpolateTemplate } from '@/lib/ai/prompt-loader'
 import { callLLM, logLLMCall } from '@/lib/ai/orchestrator'
 import { buildCampaignContext, buildSectionContext } from '@/lib/ai/section-context'
@@ -21,14 +21,8 @@ interface CampaignRow {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createServerSupabaseClient()
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { error: authError, user, db } = await requireAuth()
+    if (authError) return authError
 
     const body = await request.json()
     const { campaignId } = body
@@ -40,19 +34,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { data: profileData } = await supabase
-      .from('users')
-      .select('org_id')
-      .eq('id', user.id)
-      .single()
-
-    const profile = profileData as { org_id: string } | null
-    if (!profile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
-
     // Get campaign details
-    const { data: campaignData } = await supabase
+    const { data: campaignData } = await db!
       .from('campaigns')
       .select('id, name, client_name, brand_book_id')
       .eq('id', campaignId)
@@ -64,7 +47,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Build full campaign context from all prior stages
-    const campaignContext = await buildCampaignContext(supabase, campaignId, [
+    const campaignContext = await buildCampaignContext(db!, campaignId, [
       'brief',
       'audience_research',
       'market_research',
@@ -78,7 +61,7 @@ export async function POST(request: NextRequest) {
     // Optionally load brand book context
     let brandContext: Record<string, Record<string, unknown>> = {}
     if (campaign.brand_book_id) {
-      brandContext = await buildSectionContext(supabase, campaign.brand_book_id, [
+      brandContext = await buildSectionContext(db!, campaign.brand_book_id, [
         'brand_essence',
         'brand_values',
         'brand_personality',
@@ -97,7 +80,7 @@ export async function POST(request: NextRequest) {
 
       let prompt
       try {
-        prompt = await loadPrompt(supabase, promptKey)
+        prompt = await loadPrompt(db!, promptKey)
       } catch {
         // Skip if prompt not registered yet
         console.warn(`Prompt not found for ${promptKey}, skipping`)
@@ -118,17 +101,17 @@ export async function POST(request: NextRequest) {
         model: prompt.model,
         maxTokens: prompt.maxTokens,
         temperature: prompt.temperature,
-        orgId: profile.org_id,
-        userId: user.id,
+        orgId: user!.orgId,
+        userId: user!.id,
         promptKey,
         promptVersion: prompt.version,
         relatedEntityType: 'campaign',
         relatedEntityId: campaignId,
       })
 
-      await logLLMCall(supabase, {
-        orgId: profile.org_id,
-        userId: user.id,
+      await logLLMCall(db!, {
+        orgId: user!.orgId,
+        userId: user!.id,
         promptKey,
         promptVersion: prompt.version,
         inputTokens: result.inputTokens,
@@ -157,7 +140,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Save complete output to campaign stage
-    await (supabase as any)
+    await db!
       .from('campaign_stages')
       .upsert(
         {

@@ -1,8 +1,5 @@
-import { createServerClient } from '@supabase/ssr'
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
-import { isSuperAdmin } from '@/lib/super-admin'
+import { requireAuth } from '@/lib/api-auth'
 
 const BRAND_BOOK_SECTIONS = [
   { step_number: 1, section_key: 'brand_identity', title: 'Brand Identity' },
@@ -17,26 +14,8 @@ const BRAND_BOOK_SECTIONS = [
 
 export async function POST(request: Request) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() { return cookieStore.getAll() },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          },
-        },
-      }
-    )
-
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
-    }
+    const { error: authError, user, db } = await requireAuth()
+    if (authError) return authError
 
     const body = await request.json()
     const { name, clientName, orgId } = body
@@ -45,20 +24,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing name or orgId' }, { status: 400 })
     }
 
-    // Use service role for super admin, anon client otherwise
-    const superAdmin = isSuperAdmin(user.email)
-    const dbClient = superAdmin
-      ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-      : supabase
-
     // Create brand book
-    const { data: brandBook, error: createError } = await dbClient
+    const { data: brandBook, error: createError } = await db!
       .from('brand_books')
       .insert({
         name: name.trim(),
         client_name: clientName?.trim() || null,
         org_id: orgId,
-        created_by: user.id,
+        created_by: user!.id,
         status: 'draft',
         current_step: 1,
       })
@@ -82,7 +55,7 @@ export async function POST(request: Request) {
       content: null,
     }))
 
-    const { error: sectionsError } = await dbClient
+    const { error: sectionsError } = await db!
       .from('brand_book_sections')
       .insert(sections)
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { requireAuth } from '@/lib/api-auth'
 import { logLLMCall } from '@/lib/ai/orchestrator'
 import Anthropic from '@anthropic-ai/sdk'
 
@@ -25,25 +25,8 @@ Return format:
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createServerSupabaseClient()
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const { data: profileData } = await supabase
-      .from('users')
-      .select('org_id')
-      .eq('id', user.id)
-      .single()
-
-    const profile = profileData as { org_id: string } | null
-    if (!profile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
+    const { error: authError, user, db } = await requireAuth()
+    if (authError) return authError
 
     const formData = await request.formData()
     const file = formData.get('file') as File | null
@@ -99,9 +82,9 @@ export async function POST(request: NextRequest) {
     const textBlock = response.content.find((block) => block.type === 'text')
     const content = textBlock && textBlock.type === 'text' ? textBlock.text : ''
 
-    await logLLMCall(supabase, {
-      orgId: profile.org_id,
-      userId: user.id,
+    await logLLMCall(db!, {
+      orgId: user!.orgId,
+      userId: user!.id,
       promptKey: 'extract_pdf',
       promptVersion: 1,
       inputTokens: response.usage.input_tokens,
