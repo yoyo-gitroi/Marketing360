@@ -1,11 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { signIn } from 'next-auth/react';
 
 export default function LoginPage() {
-  const supabase = createClient();
-
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -13,15 +11,10 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
 
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/api/auth/callback`,
-      },
-    });
-
-    if (oauthError) {
-      setError(oauthError.message);
+    try {
+      await signIn('google', { callbackUrl: '/' });
+    } catch {
+      setError('Failed to start Google sign-in.');
       setLoading(false);
     }
   }

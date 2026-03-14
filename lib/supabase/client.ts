@@ -1,9 +1,20 @@
 import { createBrowserClient } from '@supabase/ssr'
 import type { Database } from './types'
 
+let _client: ReturnType<typeof createBrowserClient<Database>> | null = null
+
 export function createClient() {
-  return createBrowserClient<Database>(
+  if (typeof window === 'undefined') {
+    // Server-side during prerendering — return null.
+    // Client components using this should guard against null.
+    return null as unknown as ReturnType<typeof createBrowserClient<Database>>
+  }
+
+  if (_client) return _client
+
+  _client = createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
+  return _client
 }

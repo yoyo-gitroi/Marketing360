@@ -1,28 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { requireAuth } from '@/lib/api-auth'
 import { v4 as uuidv4 } from 'uuid'
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createServerSupabaseClient()
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const { data: profileData } = await supabase
-      .from('users')
-      .select('org_id')
-      .eq('id', user.id)
-      .single()
-
-    const profile = profileData as { org_id: string } | null
-    if (!profile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
+    const { error: authError, user, db } = await requireAuth()
+    if (authError) return authError
 
     const formData = await request.formData()
     const file = formData.get('file') as File | null
@@ -35,14 +18,14 @@ export async function POST(request: NextRequest) {
 
     const fileId = uuidv4()
     const fileExtension = file.name.split('.').pop() ?? 'bin'
-    const storagePath = `${profile.org_id}/${fileId}.${fileExtension}`
+    const storagePath = `${user!.orgId}/${fileId}.${fileExtension}`
 
     // Read file as buffer
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
     // Upload to Supabase Storage
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await db!.storage
       .from('uploads')
       .upload(storagePath, buffer, {
         contentType: file.type,
@@ -57,12 +40,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Create file_uploads record
-    const { data: fileRecord, error: insertError } = await (supabase as any)
+    const { data: fileRecord, error: insertError } = await db!
       .from('file_uploads')
       .insert({
         id: fileId,
-        org_id: profile.org_id,
-        uploaded_by: user.id,
+        org_id: user!.orgId,
+        uploaded_by: user!.id,
         file_name: file.name,
         file_type: file.type,
         storage_path: storagePath,

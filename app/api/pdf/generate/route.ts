@@ -1,11 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
-
-interface BrandBookRow {
-  id: string
-  name: string
-  org_id: string
-}
+import { requireAuth } from '@/lib/api-auth'
 
 interface SectionRow {
   section_key: string
@@ -15,14 +9,8 @@ interface SectionRow {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createServerSupabaseClient()
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { error: authError, db } = await requireAuth()
+    if (authError) return authError
 
     const body = await request.json()
     const { brandBookId } = body
@@ -34,20 +22,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verify brand book exists and user has access
-    const { data: brandBookData } = await supabase
+    // Verify brand book exists
+    const { data: brandBookData } = await db!
       .from('brand_books')
       .select('id, name, org_id')
       .eq('id', brandBookId)
       .single()
 
-    const brandBook = brandBookData as BrandBookRow | null
-    if (!brandBook) {
+    if (!brandBookData) {
       return NextResponse.json({ error: 'Brand book not found' }, { status: 404 })
     }
 
     // Fetch all sections with final_content
-    const { data: sectionsData, error: sectionsError } = await supabase
+    const { data: sectionsData, error: sectionsError } = await db!
       .from('brand_book_sections')
       .select('section_key, final_content, user_input')
       .eq('brand_book_id', brandBookId)
@@ -75,7 +62,7 @@ export async function POST(request: NextRequest) {
     const pdfUrl = `placeholder://brand-book-${brandBookId}.pdf`
 
     // Update the brand book record with the PDF URL placeholder
-    await (supabase as any)
+    await db!
       .from('brand_books')
       .update({
         pdf_url: pdfUrl,

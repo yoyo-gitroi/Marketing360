@@ -1,19 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { requireAuth } from '@/lib/api-auth'
 import { loadPrompt, interpolateTemplate } from '@/lib/ai/prompt-loader'
 import { callLLM, logLLMCall } from '@/lib/ai/orchestrator'
 import { buildSectionContext } from '@/lib/ai/section-context'
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createServerSupabaseClient()
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { error: authError, user, db } = await requireAuth()
+    if (authError) return authError
 
     const body = await request.json()
     const { brandBookId, sectionKey, contextSectionKeys } = body
@@ -25,30 +19,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Fetch user profile for org_id
-    const { data: profileData } = await supabase
-      .from('users')
-      .select('org_id')
-      .eq('id', user.id)
-      .single()
-
-    const profile = profileData as { org_id: string } | null
-    if (!profile) {
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
-    }
-
     // Load prompt from registry
     const promptKey = `brand_book.${sectionKey}`
-    const prompt = await loadPrompt(supabase, promptKey)
+    const prompt = await loadPrompt(db!, promptKey)
 
     // Build context from related sections
     let contextData: Record<string, Record<string, unknown>> = {}
     if (contextSectionKeys && contextSectionKeys.length > 0) {
-      contextData = await buildSectionContext(supabase, brandBookId, contextSectionKeys)
+      contextData = await buildSectionContext(db!, brandBookId, contextSectionKeys)
     }
 
     // Get current section's user_input
-    const { data: sectionData } = await supabase
+    const { data: sectionData } = await db!
       .from('brand_book_sections')
       .select('user_input')
       .eq('brand_book_id', brandBookId)
@@ -70,8 +52,8 @@ export async function POST(request: NextRequest) {
       model: prompt.model,
       maxTokens: prompt.maxTokens,
       temperature: prompt.temperature,
-      orgId: profile.org_id,
-      userId: user.id,
+      orgId: user!.orgId,
+      userId: user!.id,
       promptKey,
       promptVersion: prompt.version,
       relatedEntityType: 'brand_book',
@@ -79,9 +61,9 @@ export async function POST(request: NextRequest) {
     })
 
     // Log the call
-    await logLLMCall(supabase, {
-      orgId: profile.org_id,
-      userId: user.id,
+    await logLLMCall(db!, {
+      orgId: user!.orgId,
+      userId: user!.id,
       promptKey,
       promptVersion: prompt.version,
       inputTokens: result.inputTokens,
@@ -105,7 +87,7 @@ export async function POST(request: NextRequest) {
       aiGenerated = { content: result.content }
     }
 
-    const { error: updateError } = await (supabase as any)
+    const { error: updateError } = await db!
       .from('brand_book_sections')
       .update({
         ai_generated: aiGenerated,
