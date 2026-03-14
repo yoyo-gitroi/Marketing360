@@ -2,11 +2,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
+import { signIn } from 'next-auth/react';
 
 export default function SignupPage() {
-  const supabase = createClient();
-
   const [orgName, setOrgName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -20,18 +18,13 @@ export default function SignupPage() {
     setError(null);
     setLoading(true);
 
-    // Store org name in cookie so the callback can read it server-side
+    // Store org name in cookie so the auth callback can read it
     document.cookie = `pending_org_name=${encodeURIComponent(orgName.trim())}; path=/; max-age=600; SameSite=Lax`;
 
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/api/auth/callback`,
-      },
-    });
-
-    if (oauthError) {
-      setError(oauthError.message);
+    try {
+      await signIn('google', { callbackUrl: '/' });
+    } catch {
+      setError('Failed to start Google sign-up.');
       setLoading(false);
     }
   }

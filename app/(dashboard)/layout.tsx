@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
+import { signOut } from 'next-auth/react';
 import {
   LayoutDashboard,
   BookOpen,
@@ -34,7 +34,6 @@ export default function DashboardLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const supabase = createClient();
   const [ctx, setCtx] = useState<UserContext | null>(null);
 
   useEffect(() => {
@@ -56,9 +55,7 @@ export default function DashboardLayout({
   }, [router]);
 
   async function handleSignOut() {
-    await supabase.auth.signOut();
-    router.push('/login');
-    router.refresh();
+    await signOut({ callbackUrl: '/login' });
   }
 
   function isActive(href: string): boolean {

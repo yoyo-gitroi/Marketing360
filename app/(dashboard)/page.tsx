@@ -1,7 +1,8 @@
 import Link from 'next/link';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { createClient } from '@supabase/supabase-js';
-import { isSuperAdmin } from '@/lib/super-admin';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { getAdminClient } from '@/lib/db';
+import { redirect } from 'next/navigation';
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
@@ -35,35 +36,25 @@ function formatDate(dateStr: string | null): string {
 }
 
 export default async function DashboardPage() {
-  const supabase = await createServerSupabaseClient();
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
+    redirect('/login');
+  }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  // Determine which client to use for data queries
-  const superAdmin = isSuperAdmin(user?.email);
-  const queryClient = superAdmin
-    ? createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-      )
-    : supabase;
+  const db = getAdminClient();
 
   // Get user's org_id
   let orgId: string | null = null;
-  if (user) {
-    const { data: profile } = await queryClient
-      .from('users')
-      .select('org_id')
-      .eq('id', user.id)
-      .single();
-    orgId = profile?.org_id ?? null;
-  }
+  const { data: profile } = await db
+    .from('users')
+    .select('org_id')
+    .eq('email', session.user.email)
+    .single();
+  orgId = profile?.org_id ?? null;
 
   // Fetch recent brand books
   const { data: brandBooks } = orgId
-    ? await queryClient
+    ? await db
         .from('brand_books')
         .select('id, name, client_name, status, updated_at, created_by')
         .eq('org_id', orgId)
@@ -73,7 +64,7 @@ export default async function DashboardPage() {
 
   // Fetch recent campaigns
   const { data: campaigns } = orgId
-    ? await queryClient
+    ? await db
         .from('campaigns')
         .select('id, name, client_name, status, updated_at, created_by')
         .eq('org_id', orgId)
