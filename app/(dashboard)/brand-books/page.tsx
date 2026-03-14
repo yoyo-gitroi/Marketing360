@@ -39,6 +39,7 @@ export default function BrandBooksPage() {
   const [brandBooks, setBrandBooks] = useState<BrandBook[]>([]);
   const [statusFilter, setStatusFilter] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchBrandBooks() {
@@ -74,6 +75,34 @@ export default function BrandBooksPage() {
 
     fetchBrandBooks();
   }, [statusFilter, supabase, router]);
+
+  async function handleDelete(e: React.MouseEvent, bb: BrandBook) {
+    e.stopPropagation();
+
+    if (!confirm(`Are you sure you want to delete "${bb.name}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    setDeletingId(bb.id);
+    try {
+      const res = await fetch('/api/brand-books/delete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: bb.id }),
+      });
+
+      if (res.ok) {
+        setBrandBooks((prev) => prev.filter((b) => b.id !== bb.id));
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to delete brand book');
+      }
+    } catch {
+      alert('Failed to delete brand book');
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <div>
@@ -133,6 +162,9 @@ export default function BrandBooksPage() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Last Updated
                 </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -162,6 +194,21 @@ export default function BrandBooksPage() {
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500">
                     {formatDate(bb.updated_at)}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={(e) => handleDelete(e, bb)}
+                      disabled={deletingId === bb.id}
+                      className="inline-flex items-center px-2 py-1 text-xs font-medium text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                    >
+                      {deletingId === bb.id ? (
+                        'Deleting...'
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      )}
+                    </button>
                   </td>
                 </tr>
               ))}
