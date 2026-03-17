@@ -18,7 +18,7 @@ export async function GET() {
     // Get user profile
     const { data: profile } = await db
       .from('users')
-      .select('id, email, full_name, role, org_id')
+      .select('id, email, full_name, role, org_id, onboarding_completed')
       .eq('email', email)
       .single()
 
@@ -42,6 +42,7 @@ export async function GET() {
         id: profile?.id ?? session.user.id,
         email,
         full_name: profile?.full_name ?? session.user.name ?? email.split('@')[0] ?? 'User',
+        onboarding_completed: profile?.onboarding_completed ?? false,
       },
       org,
       role: effectiveRole,

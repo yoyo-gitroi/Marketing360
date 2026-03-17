@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     if (authError) return authError
 
     const body = await request.json()
-    const { name, clientName, orgId } = body
+    const { name, clientName, clientId, orgId } = body
 
     if (!name?.trim() || !orgId) {
       return NextResponse.json({ error: 'Missing name or orgId' }, { status: 400 })
@@ -30,6 +30,7 @@ export async function POST(request: Request) {
       .insert({
         name: name.trim(),
         client_name: clientName?.trim() || null,
+        client_id: clientId || null,
         org_id: orgId,
         created_by: user!.id,
         status: 'draft',

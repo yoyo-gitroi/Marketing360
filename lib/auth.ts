@@ -2,7 +2,6 @@ import type { NextAuthOptions } from 'next-auth'
 import GoogleProvider from 'next-auth/providers/google'
 import { getAdminClient } from './db'
 import { isSuperAdmin } from './super-admin'
-import { cookies } from 'next/headers'
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -32,71 +31,84 @@ export const authOptions: NextAuthOptions = {
         .single()
 
       if (!existing) {
-        // First-time user — auto-provision org + user + membership
+        // First-time user — auto-provision based on email domain
         const fullName = user.name || user.email.split('@')[0] || 'User'
+        const domain = user.email.split('@')[1]?.toLowerCase()
 
-        // Read org name from cookie (set during signup)
-        let orgName = `${fullName}'s Organization`
-        try {
-          const cookieStore = await cookies()
-          const pendingOrgCookie = cookieStore.get('pending_org_name')
-          if (pendingOrgCookie?.value) {
-            orgName = decodeURIComponent(pendingOrgCookie.value)
-          }
-        } catch {
-          // cookies() may not be available in all contexts
-        }
+        if (!domain) return false
 
-        const baseSlug = orgName
-          .toLowerCase()
-          .trim()
-          .replace(/[^a-z0-9\s-]/g, '')
-          .replace(/\s+/g, '-')
-          .replace(/-+/g, '-')
-
-        // Find unique slug
-        let slug = baseSlug
-        for (let attempt = 0; attempt < 10; attempt++) {
-          const candidateSlug = attempt === 0 ? slug : `${slug}-${attempt}`
-          const { data } = await db
-            .from('organizations')
-            .select('id')
-            .eq('slug', candidateSlug)
-            .single()
-          if (!data) {
-            slug = candidateSlug
-            break
-          }
-        }
-
-        const { data: org } = await db
+        // Check if an organization already exists for this domain
+        const { data: existingOrg } = await db
           .from('organizations')
-          .insert({ name: orgName, slug })
           .select('id')
+          .eq('domain', domain)
           .single()
 
-        if (org) {
+        if (existingOrg) {
+          // Auto-join existing org as member
           const userId = crypto.randomUUID()
           await db.from('users').insert({
             id: userId,
             email: user.email,
             full_name: fullName,
-            org_id: org.id,
-            role: 'owner',
+            org_id: existingOrg.id,
+            role: 'member',
+            onboarding_completed: false,
           })
           await db.from('org_members').insert({
             user_id: userId,
-            org_id: org.id,
-            role: 'owner',
+            org_id: existingOrg.id,
+            role: 'member',
           })
-        }
+        } else {
+          // Create new org with the domain name
+          const orgName = domain.split('.')[0]
+            .charAt(0).toUpperCase() + domain.split('.')[0].slice(1)
 
-        // Clear pending org name cookie
-        try {
-          const cookieStore = await cookies()
-          cookieStore.set('pending_org_name', '', { path: '/', maxAge: 0 })
-        } catch {
-          // ignore
+          const baseSlug = orgName
+            .toLowerCase()
+            .trim()
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+
+          // Find unique slug
+          let slug = baseSlug
+          for (let attempt = 0; attempt < 10; attempt++) {
+            const candidateSlug = attempt === 0 ? slug : `${slug}-${attempt}`
+            const { data } = await db
+              .from('organizations')
+              .select('id')
+              .eq('slug', candidateSlug)
+              .single()
+            if (!data) {
+              slug = candidateSlug
+              break
+            }
+          }
+
+          const { data: org } = await db
+            .from('organizations')
+            .insert({ name: orgName, slug, domain })
+            .select('id')
+            .single()
+
+          if (org) {
+            const userId = crypto.randomUUID()
+            await db.from('users').insert({
+              id: userId,
+              email: user.email,
+              full_name: fullName,
+              org_id: org.id,
+              role: 'owner',
+              onboarding_completed: false,
+            })
+            await db.from('org_members').insert({
+              user_id: userId,
+              org_id: org.id,
+              role: 'owner',
+            })
+          }
         }
       }
 

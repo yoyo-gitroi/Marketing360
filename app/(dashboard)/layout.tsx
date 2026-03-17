@@ -7,6 +7,7 @@ import { signOut } from 'next-auth/react';
 import {
   LayoutDashboard,
   BookOpen,
+  Users,
   Megaphone,
   Settings,
   LogOut,
@@ -14,7 +15,7 @@ import {
 } from 'lucide-react';
 
 interface UserContext {
-  user: { id: string; email: string; full_name: string };
+  user: { id: string; email: string; full_name: string; onboarding_completed: boolean };
   org: { id: string; name: string; slug: string } | null;
   role: string;
   isSuperAdmin: boolean;
@@ -23,6 +24,7 @@ interface UserContext {
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/brand-books', label: 'Brand Books', icon: BookOpen },
+  { href: '/clients', label: 'Clients', icon: Users },
   { href: '/campaigns', label: 'Campaigns', icon: Megaphone },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -45,6 +47,10 @@ export default function DashboardLayout({
           return;
         }
         const data: UserContext = await res.json();
+        if (!data.user.onboarding_completed) {
+          router.push('/onboarding');
+          return;
+        }
         setCtx(data);
       } catch {
         router.push('/login');
@@ -103,6 +109,21 @@ export default function DashboardLayout({
               </Link>
             );
           })}
+
+          {/* Super-admin-only nav item */}
+          {ctx?.isSuperAdmin && (
+            <Link
+              href="/admin"
+              className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                isActive('/admin')
+                  ? 'bg-red-50 text-red-700'
+                  : 'text-red-600 hover:bg-red-50 hover:text-red-700'
+              }`}
+            >
+              <Shield className="w-5 h-5" />
+              Admin Panel
+            </Link>
+          )}
         </nav>
 
         {/* User footer */}

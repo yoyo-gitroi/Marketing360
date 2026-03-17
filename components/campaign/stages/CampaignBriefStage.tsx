@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAutoSave } from '@/lib/utils/auto-save';
 import { Plus, Trash2 } from 'lucide-react';
 
@@ -81,6 +81,24 @@ export default function CampaignBriefStage({ stageData, onSave }: StageProps) {
   const [creativeDirectionHints, setCreativeDirectionHints] = useState<string>(
     (ui?.creative_direction_hints as string) ?? ''
   );
+
+  // Re-populate local state when stageData.user_input changes (e.g. after AI generation)
+  useEffect(() => {
+    const updated = stageData.user_input as Record<string, unknown> | undefined;
+    if (!updated || typeof updated !== 'object' || Object.keys(updated).length === 0) return;
+    setCampaignObjective((updated.campaign_objective as string) ?? '');
+    setKpis((updated.kpis as KPI[]) ?? [{ metric: '', target: '' }]);
+    setCampaignType((updated.campaign_type as string) ?? '');
+    setTargetMarkets((updated.target_markets as string[]) ?? []);
+    setCampaignDuration((updated.campaign_duration as CampaignDuration) ?? { start_date: '', end_date: '', phases: 1 });
+    setBudgetTotal((updated.budget_total as number) ?? 0);
+    setBudgetBreakdown((updated.budget_breakdown as BudgetBreakdown) ?? { production: 0, media: 0, influencer: 0, other: 0 });
+    setProblemStatement((updated.problem_statement as string) ?? '');
+    setSentimentTerritory((updated.sentiment_territory as string) ?? '');
+    setBrandFace((updated.brand_face as string) ?? '');
+    setCreativeDirectionHints((updated.creative_direction_hints as string) ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(stageData.user_input)]);
 
   const budgetSum = useMemo(
     () => budgetBreakdown.production + budgetBreakdown.media + budgetBreakdown.influencer + budgetBreakdown.other,

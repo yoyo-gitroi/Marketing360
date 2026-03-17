@@ -1,18 +1,19 @@
 'use client';
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Loader2, Sparkles } from 'lucide-react';
 import HypothesisCard from '@/components/campaign/HypothesisCard';
 import type { Hypothesis } from '@/components/campaign/HypothesisCard';
+import type { FeedbackValue } from '@/components/campaign/HypothesisCard';
 import type { StageProps } from './CampaignBriefStage';
 
-// Research stages are 3-7 (market_research, customer_intelligence, platform_channel, historical_data, resources_execution)
+// Research stages are 3-7 (market_research, customer_intel, platform_channel, historical_data, resources)
 const RESEARCH_STAGE_KEYS = [
   'market_research',
-  'customer_intelligence',
+  'customer_intel',
   'platform_channel',
   'historical_data',
-  'resources_execution',
+  'resources',
 ];
 
 export default function HypothesisStage({ stageData, onSave, campaignId }: StageProps) {
@@ -34,17 +35,48 @@ export default function HypothesisStage({ stageData, onSave, campaignId }: Stage
   );
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [feedbackMap, setFeedbackMap] = useState<Record<number, FeedbackValue>>({});
 
-  // Count how many research stages have data
+  // Load feedback on mount
+  useEffect(() => {
+    async function loadFeedback() {
+      try {
+        const res = await fetch(`/api/ai/feedback?campaignId=${campaignId}&stageKey=hypothesis`);
+        if (res.ok) {
+          const data = await res.json();
+          const map: Record<number, FeedbackValue> = {};
+          for (const fb of data.feedback) {
+            if (fb.item_type === 'hypothesis') {
+              map[fb.item_index] = fb.feedback as FeedbackValue;
+            }
+          }
+          setFeedbackMap(map);
+        }
+      } catch {
+        // silently fail
+      }
+    }
+    loadFeedback();
+  }, [campaignId]);
+
+  // Count how many research stages have meaningful data
   const filledResearchStages = allStages
     ? allStages.filter((s) => {
         const stageKey = (s as Record<string, unknown>).stage_key as string;
         const userInput = (s as Record<string, unknown>).user_input as Record<string, unknown> | undefined;
-        return (
-          RESEARCH_STAGE_KEYS.includes(stageKey) &&
-          userInput &&
-          Object.values(userInput).some((v) => v !== '' && v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0))
-        );
+        if (!RESEARCH_STAGE_KEYS.includes(stageKey)) return false;
+        if (!userInput || typeof userInput !== 'object') return false;
+        return Object.values(userInput).some((v) => {
+          if (v === '' || v === null || v === undefined) return false;
+          if (Array.isArray(v) && v.length === 0) return false;
+          if (Array.isArray(v) && v.every((item) => {
+            if (typeof item === 'string') return item.trim() === '';
+            if (typeof item === 'object' && item !== null) return Object.values(item).every((iv) => !iv || (typeof iv === 'string' && iv.trim() === ''));
+            return false;
+          })) return false;
+          if (typeof v === 'object' && v !== null && !Array.isArray(v) && Object.values(v).every((iv) => !iv || (typeof iv === 'string' && iv.trim() === ''))) return false;
+          return true;
+        });
       }).length
     : 0;
 
@@ -68,6 +100,7 @@ export default function HypothesisStage({ stageData, onSave, campaignId }: Stage
       setHypotheses(generated);
       setSelectedIndex(null);
       setUseCustom(false);
+      setFeedbackMap({});
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate hypotheses');
     } finally {
@@ -101,6 +134,38 @@ export default function HypothesisStage({ stageData, onSave, campaignId }: Stage
       },
     });
   }, [customHypothesis, onSave]);
+
+  const handleFeedback = useCallback(
+    async (idx: number, feedback: 'thumbs_up' | 'thumbs_down') => {
+      // Toggle: if same feedback, remove it (by re-sending same - API upserts)
+      const currentFeedback = feedbackMap[idx];
+      const newFeedback = currentFeedback === feedback ? null : feedback;
+
+      // Optimistic update
+      setFeedbackMap((prev) => ({ ...prev, [idx]: newFeedback }));
+
+      if (newFeedback) {
+        try {
+          await fetch('/api/ai/feedback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              campaignId,
+              stageKey: 'hypothesis',
+              itemIndex: idx,
+              itemTitle: hypotheses[idx]?.title ?? '',
+              itemType: 'hypothesis',
+              feedback: newFeedback,
+            }),
+          });
+        } catch {
+          // Revert on failure
+          setFeedbackMap((prev) => ({ ...prev, [idx]: currentFeedback ?? null }));
+        }
+      }
+    },
+    [campaignId, hypotheses, feedbackMap]
+  );
 
   return (
     <div className="space-y-8">
@@ -159,6 +224,8 @@ export default function HypothesisStage({ stageData, onSave, campaignId }: Stage
                 hypothesis={h}
                 isSelected={!useCustom && selectedIndex === idx}
                 onSelect={() => handleSelect(idx)}
+                feedback={feedbackMap[idx] ?? null}
+                onFeedback={(fb) => handleFeedback(idx, fb)}
               />
             ))}
           </div>

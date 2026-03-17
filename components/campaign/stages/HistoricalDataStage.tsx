@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAutoSave } from '@/lib/utils/auto-save';
 import { Plus, Trash2 } from 'lucide-react';
 import type { StageProps } from './CampaignBriefStage';
@@ -31,6 +31,16 @@ export default function HistoricalDataStage({ stageData, onSave }: StageProps) {
   const [benchmarkData, setBenchmarkData] = useState<string>(
     (ui?.benchmark_data as string) ?? ''
   );
+
+  // Re-populate local state when stageData.user_input changes (e.g. after AI generation)
+  useEffect(() => {
+    const updated = stageData.user_input as Record<string, unknown> | undefined;
+    if (!updated || typeof updated !== 'object' || Object.keys(updated).length === 0) return;
+    setPastCampaigns((updated.past_campaigns as PastCampaign[]) ?? [{ ...EMPTY_CAMPAIGN }]);
+    setInfluencerLandscapeNotes((updated.influencer_landscape_notes as string) ?? '');
+    setBenchmarkData((updated.benchmark_data as string) ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(stageData.user_input)]);
 
   const formData = useMemo(
     () => ({

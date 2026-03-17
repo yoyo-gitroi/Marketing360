@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAutoSave } from '@/lib/utils/auto-save';
 import { Plus, Trash2 } from 'lucide-react';
 import type { StageProps } from './CampaignBriefStage';
@@ -36,6 +36,21 @@ export default function MarketResearchStage({ stageData, onSave }: StageProps) {
   const [usGlobalCompetitionNotes, setUsGlobalCompetitionNotes] = useState<string>((ui?.us_global_competition_notes as string) ?? '');
   const [categoryRegulations, setCategoryRegulations] = useState<string>((ui?.category_regulations as string) ?? '');
   const [seasonalCulturalOpportunities, setSeasonalCulturalOpportunities] = useState<string>((ui?.seasonal_cultural_opportunities as string) ?? '');
+
+  // Re-populate local state when stageData.user_input changes (e.g. after AI generation)
+  useEffect(() => {
+    const updated = stageData.user_input as Record<string, unknown> | undefined;
+    if (!updated || typeof updated !== 'object' || Object.keys(updated).length === 0) return;
+    setIndustryTrends((updated.industry_trends as string) ?? '');
+    setMarketSizeNotes((updated.market_size_notes as string) ?? '');
+    setConsumerBehaviorShifts((updated.consumer_behavior_shifts as string) ?? '');
+    setCompetitors((updated.competitors as Competitor[]) ?? [{ ...EMPTY_COMPETITOR }]);
+    setIndiaCompetitionNotes((updated.india_competition_notes as string) ?? '');
+    setUsGlobalCompetitionNotes((updated.us_global_competition_notes as string) ?? '');
+    setCategoryRegulations((updated.category_regulations as string) ?? '');
+    setSeasonalCulturalOpportunities((updated.seasonal_cultural_opportunities as string) ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(stageData.user_input)]);
 
   const formData = useMemo(
     () => ({

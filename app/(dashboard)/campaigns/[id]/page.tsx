@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { ChevronLeft, ChevronRight, Sparkles, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Sparkles, Loader2, Check } from 'lucide-react';
 
 import CampaignBriefStage from '@/components/campaign/stages/CampaignBriefStage';
 import BrandReferenceStage from '@/components/campaign/stages/BrandReferenceStage';
@@ -87,6 +87,7 @@ export default function CampaignEditorPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [completionLoading, setCompletionLoading] = useState(false);
 
   const totalSteps = STAGE_KEYS.length;
 
@@ -220,6 +221,27 @@ export default function CampaignEditorPage() {
       setAiLoading(false);
     }
   }, [campaignId, currentStep, fetchData]);
+
+  const handleCompleteCampaign = useCallback(async () => {
+    setCompletionLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/campaigns/generate-output', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to generate campaign output');
+      }
+      router.push(`/campaigns/${campaignId}/output`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Output generation failed');
+    } finally {
+      setCompletionLoading(false);
+    }
+  }, [campaignId, router]);
 
   const currentStageKey = STAGE_KEYS[currentStep - 1];
   const currentStageData = stages.find((s) => s.stage_key === currentStageKey);
@@ -366,6 +388,19 @@ export default function CampaignEditorPage() {
         )}
       </main>
 
+      {/* Completion loading modal */}
+      {completionLoading && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-sm mx-4 text-center shadow-xl">
+            <Loader2 className="h-10 w-10 animate-spin text-purple-600 mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Generating Campaign Output</h3>
+            <p className="text-sm text-gray-500">
+              AI is synthesizing all your research, hypotheses, and ideas into a comprehensive campaign document. This may take a minute...
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Navigation Footer */}
       <footer className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-3 z-10">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -382,14 +417,28 @@ export default function CampaignEditorPage() {
             Stage {currentStep} of {totalSteps}: {STAGE_LABELS[currentStep - 1]}
           </span>
 
-          <button
-            onClick={() => handleStepChange(currentStep + 1)}
-            disabled={currentStep === totalSteps}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            Next
-            <ChevronRight className="h-4 w-4" />
-          </button>
+          {currentStep === totalSteps ? (
+            <button
+              onClick={handleCompleteCampaign}
+              disabled={completionLoading}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {completionLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Check className="h-4 w-4" />
+              )}
+              {completionLoading ? 'Generating Output...' : 'Generate Campaign Output'}
+            </button>
+          ) : (
+            <button
+              onClick={() => handleStepChange(currentStep + 1)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Next
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </footer>
     </div>

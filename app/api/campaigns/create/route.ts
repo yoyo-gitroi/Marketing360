@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     const name = formData.get('name') as string
     const clientName = formData.get('clientName') as string
+    const clientId = formData.get('clientId') as string | null
     const orgId = formData.get('orgId') as string
     const sourceType = formData.get('sourceType') as string
     const brandBookId = formData.get('brandBookId') as string | null
@@ -74,6 +75,7 @@ export async function POST(request: NextRequest) {
       .insert({
         name: name.trim(),
         client_name: clientName?.trim() || null,
+        client_id: clientId || null,
         org_id: orgId,
         created_by: user!.id,
         status: 'draft',
