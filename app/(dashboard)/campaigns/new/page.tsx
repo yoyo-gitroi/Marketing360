@@ -51,7 +51,6 @@ export default function NewCampaignPage() {
 
     try {
       if (!orgId) {
-        // Try to fetch again
         const meRes = await fetch('/api/me');
         if (!meRes.ok) { router.push('/login'); return; }
         const me = await meRes.json();
@@ -63,33 +62,24 @@ export default function NewCampaignPage() {
         setOrgId(me.org.id);
       }
 
-      // Handle PDF upload if provided
-      let uploadedPdfPath: string | null = null;
-      if (sourceType === 'pdf' && brandBookPdf && orgId) {
-        const fileName = `${orgId}/${Date.now()}-${brandBookPdf.name}`;
-        const { error: uploadError } = await supabase.storage
-          .from('brand-book-pdfs')
-          .upload(fileName, brandBookPdf);
+      // Use FormData to send PDF file along with campaign data
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('clientName', clientName || '');
+      formData.append('orgId', orgId!);
+      formData.append('sourceType', sourceType);
 
-        if (uploadError) {
-          setError('Failed to upload PDF: ' + uploadError.message);
-          setLoading(false);
-          return;
-        }
-        uploadedPdfPath = fileName;
+      if (sourceType === 'existing' && brandBookId) {
+        formData.append('brandBookId', brandBookId);
       }
 
-      // Create campaign via API (handles super admin RLS bypass)
+      if (sourceType === 'pdf' && brandBookPdf) {
+        formData.append('brandBookPdf', brandBookPdf);
+      }
+
       const res = await fetch('/api/campaigns/create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          clientName: clientName || null,
-          orgId,
-          brandBookId: sourceType === 'existing' && brandBookId ? brandBookId : null,
-          uploadedBrandBookUrl: uploadedPdfPath,
-        }),
+        body: formData,
       });
 
       const data = await res.json();

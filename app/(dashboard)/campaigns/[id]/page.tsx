@@ -162,12 +162,12 @@ export default function CampaignEditorPage() {
   );
 
   const handleStepChange = useCallback(
-    (step: number) => {
+    async (step: number) => {
       if (step >= 1 && step <= totalSteps) {
         setCurrentStep(step);
-        supabase
+        await supabase
           .from('campaigns')
-          .update({ current_stage: step })
+          .update({ current_stage: step, updated_at: new Date().toISOString() })
           .eq('id', campaignId);
       }
     },

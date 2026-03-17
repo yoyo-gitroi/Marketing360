@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/api-auth'
+import { getAdminClient } from '@/lib/db'
 
 const CAMPAIGN_STAGES = [
   { stage_number: 1, stage_key: 'campaign_brief', title: 'Campaign Brief' },
@@ -13,16 +14,58 @@ const CAMPAIGN_STAGES = [
   { stage_number: 9, stage_key: 'ideation_room', title: 'Ideation Room' },
 ]
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const { error: authError, user, db } = await requireAuth()
     if (authError) return authError
 
-    const body = await request.json()
-    const { name, clientName, orgId, brandBookId, uploadedBrandBookUrl } = body
+    // Parse FormData
+    const formData = await request.formData()
+    const name = formData.get('name') as string
+    const clientName = formData.get('clientName') as string
+    const orgId = formData.get('orgId') as string
+    const sourceType = formData.get('sourceType') as string
+    const brandBookId = formData.get('brandBookId') as string | null
+    const pdfFile = formData.get('brandBookPdf') as File | null
 
     if (!name?.trim() || !orgId) {
       return NextResponse.json({ error: 'Missing name or orgId' }, { status: 400 })
+    }
+
+    // Handle PDF upload if provided - use admin client to ensure bucket exists
+    let uploadedPdfUrl: string | null = null
+    if (sourceType === 'pdf' && pdfFile) {
+      const admin = getAdminClient()
+      const bucketName = 'brand-book-pdfs'
+
+      // Ensure bucket exists (create if not)
+      const { data: buckets } = await admin.storage.listBuckets()
+      const bucketExists = buckets?.some((b) => b.name === bucketName)
+      if (!bucketExists) {
+        await admin.storage.createBucket(bucketName, { public: false })
+      }
+
+      // Upload file
+      const fileName = `${orgId}/${Date.now()}-${pdfFile.name}`
+      const arrayBuffer = await pdfFile.arrayBuffer()
+      const buffer = new Uint8Array(arrayBuffer)
+
+      const { error: uploadError } = await admin.storage
+        .from(bucketName)
+        .upload(fileName, buffer, {
+          contentType: pdfFile.type || 'application/pdf',
+          upsert: true,
+        })
+
+      if (uploadError) {
+        console.error('PDF upload error:', uploadError)
+        return NextResponse.json(
+          { error: 'Failed to upload PDF: ' + uploadError.message },
+          { status: 500 }
+        )
+      }
+
+      uploadedPdfUrl = fileName
     }
 
     // Create campaign
@@ -35,7 +78,7 @@ export async function POST(request: Request) {
         created_by: user!.id,
         status: 'draft',
         brand_book_id: brandBookId || null,
-        uploaded_brand_book_url: uploadedBrandBookUrl || null,
+        uploaded_brand_book_url: uploadedPdfUrl,
       })
       .select('id')
       .single()
