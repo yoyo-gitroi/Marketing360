@@ -143,10 +143,10 @@ export async function POST(request: NextRequest) {
     // Get current section's user_input (if any)
     const { data: sectionData } = await db!
       .from('brand_book_sections')
-      .select('user_input')
+      .select('id, user_input')
       .eq('brand_book_id', brandBookId)
       .eq('section_key', sectionKey)
-      .single()
+      .maybeSingle()
 
     const existingInput = (sectionData?.user_input as Record<string, unknown>) ?? {}
 
@@ -250,23 +250,41 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Save to BOTH user_input AND ai_generated so forms display the content
-    const { error: updateError } = await db!
-      .from('brand_book_sections')
-      .update({
-        user_input: generated,
-        ai_generated: generated,
-        ai_status: 'generated',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('brand_book_id', brandBookId)
-      .eq('section_key', sectionKey)
+    // Upsert: INSERT if section doesn't exist, UPDATE if it does
+    if (sectionData?.id) {
+      const { error: updateError } = await db!
+        .from('brand_book_sections')
+        .update({
+          user_input: generated,
+          ai_generated: generated,
+          ai_status: 'generated',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', sectionData.id)
 
-    if (updateError) {
-      return NextResponse.json(
-        { error: `Failed to save: ${updateError.message}` },
-        { status: 500 }
-      )
+      if (updateError) {
+        return NextResponse.json(
+          { error: `Failed to save: ${updateError.message}` },
+          { status: 500 }
+        )
+      }
+    } else {
+      const { error: insertError } = await db!
+        .from('brand_book_sections')
+        .insert({
+          brand_book_id: brandBookId,
+          section_key: sectionKey,
+          user_input: generated,
+          ai_generated: generated,
+          ai_status: 'generated',
+        })
+
+      if (insertError) {
+        return NextResponse.json(
+          { error: `Failed to save: ${insertError.message}` },
+          { status: 500 }
+        )
+      }
     }
 
     return NextResponse.json({
