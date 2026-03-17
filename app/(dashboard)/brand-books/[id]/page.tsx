@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import StepWizard from '@/components/brand-book/StepWizard';
 import AIGenerateButton from '@/components/brand-book/AIGenerateButton';
-import { ChevronLeft, ChevronRight, Download, Sparkles } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, Download, FileText, Sparkles } from 'lucide-react';
 
 const SECTION_KEYS = [
   'brand_identity',
@@ -248,6 +248,14 @@ export default function BrandBookEditorPage() {
             )}
 
             <button
+              onClick={() => window.open(`/brand-books/${brandBookId}/pdf`, '_blank')}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors text-sm"
+            >
+              <FileText className="h-4 w-4" />
+              Export PDF
+            </button>
+
+            <button
               onClick={handleExportPPTX}
               disabled={exporting}
               className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors text-sm"
@@ -307,7 +315,7 @@ export default function BrandBookEditorPage() {
       </main>
 
       {/* Navigation Footer */}
-      <footer className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-3">
+      <footer className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-3 z-50">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <button
             onClick={() => handleStepChange(currentStep - 1)}
@@ -322,14 +330,23 @@ export default function BrandBookEditorPage() {
             Step {currentStep} of 8: {STEP_LABELS[currentStep - 1]}
           </span>
 
-          <button
-            onClick={() => handleStepChange(currentStep + 1)}
-            disabled={currentStep === 8}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            Next
-            <ChevronRight className="h-4 w-4" />
-          </button>
+          {currentStep === 8 ? (
+            <button
+              onClick={() => router.push('/brand-books')}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              <Check className="h-4 w-4" />
+              Complete
+            </button>
+          ) : (
+            <button
+              onClick={() => handleStepChange(currentStep + 1)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              Next
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </footer>
     </div>
