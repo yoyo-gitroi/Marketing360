@@ -1,8 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import puppeteer from 'puppeteer-core'
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const chromium = require('@sparticuz/chromium') as any
+import puppeteer, { type Browser, type Page } from 'puppeteer-core'
 
 export interface ScrapedData {
   text: string
@@ -18,68 +15,91 @@ export interface ScrapedData {
   additionalData: { text: string }[]
 }
 
-async function getBrowserConfig() {
-  const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL
-  if (isProduction) {
+/**
+ * Get browser launch config - uses @sparticuz/chromium on Vercel, local Chrome for dev
+ */
+async function getBrowserConfig(): Promise<any> {
+  // Always try @sparticuz/chromium first (works on Vercel and can work locally)
+  try {
+    // Dynamic import with type assertion to handle incomplete @sparticuz/chromium types
+    const chromiumModule = await import('@sparticuz/chromium')
+    const chromium = chromiumModule.default as any
+    const executablePath = await chromium.executablePath()
+
     return {
       args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
+      defaultViewport: chromium.defaultViewport ?? { width: 1280, height: 720 },
+      executablePath,
+      headless: chromium.headless ?? true,
     }
+  } catch (e: any) {
+    console.warn('chromium package not available, trying local Chrome:', e.message)
   }
-  // Local dev: try common Chrome/Chromium paths
-  const paths = [
+
+  // Fallback: local Chrome for development
+  const fs = await import('fs')
+  const localPaths = [
+    process.env.CHROME_PATH,
     '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
     '/usr/bin/chromium-browser',
     '/usr/bin/chromium',
     '/snap/bin/chromium',
-    process.env.CHROME_PATH,
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
   ].filter(Boolean) as string[]
 
-  let executablePath = paths[0]
-  for (const p of paths) {
-    try {
-      const { existsSync } = await import('fs')
-      if (existsSync(p)) {
-        executablePath = p
-        break
+  for (const p of localPaths) {
+    if (fs.existsSync(p)) {
+      return {
+        headless: true,
+        executablePath: p,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-gpu',
+          '--disable-dev-shm-usage',
+          '--single-process',
+        ],
       }
-    } catch { /* continue */ }
+    }
   }
 
-  return {
-    headless: true,
-    executablePath,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
-  }
+  throw new Error('No Chrome/Chromium binary found. Set CHROME_PATH env variable.')
 }
 
+/**
+ * Scrape a single page: extract text, images, fonts, colors
+ */
 async function scrapePage(
-  page: any,
+  page: Page,
   url: string,
   options = { images: true, text: true, fonts: true, colors: true }
-) {
+): Promise<{
+  images: { link: string; title: string }[]
+  text: string
+  fonts: string[]
+  colors: any
+} | null> {
   try {
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 })
 
-    let imagesData: any[] = []
+    let imagesData: { link: string; title: string }[] = []
     let visibleText = ''
     let fontsData: string[] = []
     let colorData: any = { specifics: {}, palette: [] }
 
     if (options.images) {
       imagesData = await page.evaluate((pageUrl: string) => {
-        const allImages = document.querySelectorAll('img')
-        const data: any[] = []
-        allImages.forEach((img: HTMLImageElement) => {
+        const data: { link: string; title: string }[] = []
+        document.querySelectorAll('img').forEach((img: HTMLImageElement) => {
           const src = img.getAttribute('src')
           const alt = img.getAttribute('alt') || 'No alt text'
           if (src) {
             try {
               const absoluteUrl = new URL(src, pageUrl)
               data.push({ link: absoluteUrl.href, title: alt.trim() })
-            } catch { /* ignore */ }
+            } catch { /* ignore bad URLs */ }
           }
         })
         return data
@@ -88,19 +108,18 @@ async function scrapePage(
 
     if (options.text) {
       visibleText = await page.evaluate(() => {
-        document.querySelectorAll('script, style').forEach((el: Element) => el.remove())
-        return document.body.innerText
+        document.querySelectorAll('script, style, noscript').forEach(el => el.remove())
+        return (document.body as HTMLElement).innerText
       })
       visibleText = visibleText.replace(/\s+/g, ' ').trim()
     }
 
     if (options.fonts) {
       fontsData = await page.evaluate(() => {
-        const allElements = document.querySelectorAll('*')
         const fontFamilies = new Set<string>()
-        allElements.forEach((el: Element) => {
-          const style = window.getComputedStyle(el)
-          fontFamilies.add(style.getPropertyValue('font-family'))
+        document.querySelectorAll('*').forEach(el => {
+          const ff = window.getComputedStyle(el).getPropertyValue('font-family')
+          if (ff) fontFamilies.add(ff)
         })
         return Array.from(fontFamilies)
       })
@@ -108,37 +127,38 @@ async function scrapePage(
 
     if (options.colors) {
       colorData = await page.evaluate(() => {
-        const results: any = { specifics: {}, palette: new Set() }
+        const results: any = { specifics: {}, palette: [] }
         const getStyles = (el: Element | null) => {
           if (!el) return null
-          const style = window.getComputedStyle(el)
+          const s = window.getComputedStyle(el)
           return {
-            text_color: style.getPropertyValue('color'),
-            background_color: style.getPropertyValue('background-color'),
-            border_color: style.getPropertyValue('border-color'),
+            text_color: s.getPropertyValue('color'),
+            background_color: s.getPropertyValue('background-color'),
+            border_color: s.getPropertyValue('border-color'),
           }
         }
         results.specifics.body = getStyles(document.querySelector('body'))
         results.specifics.h1 = getStyles(document.querySelector('h1'))
         results.specifics.h2 = getStyles(document.querySelector('h2'))
         results.specifics.link = getStyles(document.querySelector('a'))
-        const buttonEl = document.querySelector('button, [class*="btn"], a[role="button"]')
-        results.specifics.button = getStyles(buttonEl)
+        results.specifics.button = getStyles(
+          document.querySelector('button, [class*="btn"], a[role="button"]')
+        )
 
-        const allElements = document.querySelectorAll('*')
-        allElements.forEach((el: Element) => {
-          const style = window.getComputedStyle(el)
-          const color = style.getPropertyValue('color')
-          const bgColor = style.getPropertyValue('background-color')
-          if (color && color !== 'rgba(0, 0, 0, 0)') results.palette.add(color)
-          if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)') results.palette.add(bgColor)
+        const paletteSet = new Set<string>()
+        document.querySelectorAll('*').forEach(el => {
+          const s = window.getComputedStyle(el)
+          const c = s.getPropertyValue('color')
+          const bg = s.getPropertyValue('background-color')
+          if (c && c !== 'rgba(0, 0, 0, 0)') paletteSet.add(c)
+          if (bg && bg !== 'rgba(0, 0, 0, 0)') paletteSet.add(bg)
         })
-        results.palette = Array.from(results.palette)
+        results.palette = Array.from(paletteSet)
         return results
       })
     }
 
-      const formatColor = (styles: any) =>
+    const formatColor = (styles: any) =>
       styles
         ? { text: styles.text_color, background: styles.background_color, border: styles.border_color }
         : undefined
@@ -161,217 +181,98 @@ async function scrapePage(
   }
 }
 
-async function findInternalLinks(page: any, url: string): Promise<Set<string>> {
-  const internalLinks = new Set<string>()
+/**
+ * Find internal links on a page
+ */
+async function findInternalLinks(page: Page, url: string): Promise<string[]> {
   try {
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 })
-    const linksOnPage = await page.evaluate((baseUrl: string) => {
-      const allLinks = document.querySelectorAll('a')
+    const links = await page.evaluate((baseUrl: string) => {
       const uniqueHrefs = new Set<string>()
       const pageDomain = new URL(baseUrl).hostname
-      allLinks.forEach((link: HTMLAnchorElement) => {
+      document.querySelectorAll('a').forEach((link: HTMLAnchorElement) => {
         const href = link.getAttribute('href')
         if (href) {
           try {
             const absoluteUrl = new URL(href, baseUrl)
-            if (absoluteUrl.protocol !== 'http:' && absoluteUrl.protocol !== 'https:') return
-            if (absoluteUrl.hostname !== pageDomain) return
-            absoluteUrl.hash = ''
-            uniqueHrefs.add(absoluteUrl.href)
+            if (
+              (absoluteUrl.protocol === 'http:' || absoluteUrl.protocol === 'https:') &&
+              absoluteUrl.hostname === pageDomain
+            ) {
+              absoluteUrl.hash = ''
+              uniqueHrefs.add(absoluteUrl.href)
+            }
           } catch { /* ignore */ }
         }
       })
       return Array.from(uniqueHrefs)
     }, url)
-    linksOnPage.forEach((link: string) => internalLinks.add(link))
+    return links
   } catch (error: any) {
     console.error(`Could not find links on ${url}: ${error.message}`)
+    return []
   }
-  return internalLinks
 }
 
+/**
+ * Filter for relevant internal pages (about, products, pricing, services)
+ */
 function filterRelevantLinks(links: string[]): string[] {
-  const keywords = ['product', 'price', 'pricing', 'about', 'service']
-  return links.filter((link) => {
-    const lowercaseLink = link.toLowerCase()
-    return keywords.some((keyword) => lowercaseLink.includes(keyword))
+  const keywords = ['product', 'price', 'pricing', 'about', 'service', 'team', 'story', 'mission']
+  return links.filter(link => {
+    const lower = link.toLowerCase()
+    return keywords.some(kw => lower.includes(kw))
   })
 }
 
-export async function scrapeWebsiteWithRelevantLinks(url: string): Promise<ScrapedData> {
-  let browser
+/**
+ * Main scraper: launches browser, scrapes main page + relevant subpages
+ */
+export async function scrapeWebsite(url: string): Promise<ScrapedData> {
+  let browser: Browser | null = null
+
   try {
-    const browserConfig = await getBrowserConfig()
-    browser = await puppeteer.launch(browserConfig as any)
+    const config = await getBrowserConfig()
+    browser = await puppeteer.launch(config)
     const page = await browser.newPage()
     await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     )
 
-    // 1. Find all internal links
-    const allLinks = await findInternalLinks(page, url)
-    const linksArray: string[] = []
-    allLinks.forEach((link) => linksArray.push(link))
-    const relevantLinks = filterRelevantLinks(linksArray)
-
-    // 2. Scrape main page with full data
-    let data = await scrapePage(page, url, {
-      images: true,
-      text: true,
-      fonts: true,
-      colors: true,
-    })
-
-    const safeData = data || { images: [], text: '', fonts: [], colors: {} }
+    // 1. Scrape main page with all data
+    const mainData = await scrapePage(page, url)
 
     const result: ScrapedData = {
-      text: safeData.text || '',
-      images: safeData.images || [],
-      fonts: safeData.fonts || [],
-      colors: safeData.colors || {},
+      text: mainData?.text || '',
+      images: mainData?.images || [],
+      fonts: mainData?.fonts || [],
+      colors: mainData?.colors || {},
       additionalData: [],
     }
 
-    // 3. Scrape relevant links (text only)
-    for (let i = 0; i < Math.min(relevantLinks.length, 3); i++) {
-      const link = relevantLinks[i]
-      const response = await scrapePage(page, link, {
+    // 2. Find and scrape relevant internal pages (text only, up to 3)
+    const allLinks = await findInternalLinks(page, url)
+    const relevant = filterRelevantLinks(allLinks).slice(0, 3)
+
+    for (const link of relevant) {
+      const sub = await scrapePage(page, link, {
         images: false,
         text: true,
         fonts: false,
         colors: false,
       })
-      if (response?.text) {
-        result.additionalData.push({ text: response.text })
+      if (sub?.text) {
+        result.additionalData.push({ text: sub.text.substring(0, 5000) })
       }
     }
 
     return result
   } catch (error: any) {
-    console.error(`Error in scrapeWebsiteWithRelevantLinks: ${error.message}`)
-    // Return empty data on error
-    return { text: '', images: [], fonts: [], colors: {}, additionalData: [] }
+    console.error(`Scraper error for ${url}: ${error.message}`)
+    throw error // Propagate so the API route can log the real error
   } finally {
     if (browser) {
-      await browser.close()
+      await browser.close().catch(() => {})
     }
-  }
-}
-
-/**
- * Lightweight fallback scraper using fetch + cheerio (no browser needed)
- */
-export async function scrapeWebsiteLightweight(url: string): Promise<ScrapedData> {
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-      },
-      signal: AbortSignal.timeout(15000),
-    })
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`)
-    }
-
-    const html = await response.text()
-    const cheerio = await import('cheerio')
-    const $ = cheerio.load(html)
-
-    // Remove scripts and styles
-    $('script, style, noscript').remove()
-
-    // Extract text
-    const text = $('body').text().replace(/\s+/g, ' ').trim()
-
-    // Extract images
-    const images: { link: string; title: string }[] = []
-    $('img').each((_, el) => {
-      const src = $(el).attr('src')
-      const alt = $(el).attr('alt') || 'No alt text'
-      if (src) {
-        try {
-          const absoluteUrl = new URL(src, url)
-          images.push({ link: absoluteUrl.href, title: alt.trim() })
-        } catch { /* ignore */ }
-      }
-    })
-
-    // Extract font references from CSS links and inline styles
-    const fonts: string[] = []
-    $('link[href*="fonts"]').each((_, el) => {
-      const href = $(el).attr('href')
-      if (href) fonts.push(href)
-    })
-
-    // Try to scrape about page for more context
-    const additionalData: { text: string }[] = []
-    const aboutLinks: string[] = []
-    $('a').each((_, el) => {
-      const href = $(el).attr('href')
-      if (href) {
-        const lower = href.toLowerCase()
-        if (lower.includes('about') || lower.includes('product') || lower.includes('pricing')) {
-          try {
-            const absUrl = new URL(href, url)
-            if (absUrl.hostname === new URL(url).hostname) {
-              aboutLinks.push(absUrl.href)
-            }
-          } catch { /* ignore */ }
-        }
-      }
-    })
-
-    // Scrape up to 2 additional pages
-    const uniqueAboutLinks: string[] = []
-    const seenLinks = new Set<string>()
-    for (const l of aboutLinks) {
-      if (!seenLinks.has(l)) {
-        seenLinks.add(l)
-        uniqueAboutLinks.push(l)
-      }
-    }
-    for (let i = 0; i < Math.min(uniqueAboutLinks.length, 2); i++) {
-      const link = uniqueAboutLinks[i]
-      try {
-        const subRes = await fetch(link, {
-          headers: { 'User-Agent': 'Mozilla/5.0' },
-          signal: AbortSignal.timeout(10000),
-        })
-        if (subRes.ok) {
-          const subHtml = await subRes.text()
-          const $sub = cheerio.load(subHtml)
-          $sub('script, style, noscript').remove()
-          const subText = $sub('body').text().replace(/\s+/g, ' ').trim()
-          if (subText) {
-            additionalData.push({ text: subText.substring(0, 5000) })
-          }
-        }
-      } catch { /* ignore */ }
-    }
-
-    return {
-      text: text.substring(0, 15000),
-      images: images.slice(0, 20),
-      fonts,
-      colors: {},
-      additionalData,
-    }
-  } catch (error: any) {
-    console.error(`Lightweight scrape failed for ${url}: ${error.message}`)
-    return { text: '', images: [], fonts: [], colors: {}, additionalData: [] }
-  }
-}
-
-/**
- * Main entry point: tries puppeteer first, falls back to lightweight
- */
-export async function scrapeWebsite(url: string): Promise<ScrapedData> {
-  try {
-    return await scrapeWebsiteWithRelevantLinks(url)
-  } catch (error: any) {
-    console.warn(`Puppeteer scraping failed, falling back to lightweight: ${error.message}`)
-    return await scrapeWebsiteLightweight(url)
   }
 }
