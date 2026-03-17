@@ -332,7 +332,13 @@ export default function BrandBookEditorPage() {
 
           {currentStep === 8 ? (
             <button
-              onClick={() => router.push('/brand-books')}
+              onClick={async () => {
+                await supabase
+                  .from('brand_books')
+                  .update({ status: 'completed', updated_at: new Date().toISOString() })
+                  .eq('id', brandBookId);
+                router.push('/brand-books');
+              }}
               className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
             >
               <Check className="h-4 w-4" />
