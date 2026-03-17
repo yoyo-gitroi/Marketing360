@@ -67,15 +67,16 @@ export async function POST(request: NextRequest) {
 Brand context: ${brandContext}
 Campaign research: ${Object.keys(priorData).length > 0 ? JSON.stringify(priorData) : 'No prior data yet.'}
 
-Return JSON array:
+Return JSON:
 {
   "hypotheses": [
     {
       "title": "string - hypothesis name",
-      "hypothesis": "string - If we... then... because...",
-      "rationale": "string - supporting rationale",
-      "risk_level": "low|medium|high",
-      "expected_impact": "string"
+      "insight": "string - the key consumer/market insight",
+      "emotional_territory": "string - the emotional space",
+      "tg_reframe": "string - how this reframes the target group",
+      "the_flip": "string - the contrarian or unexpected angle",
+      "execution_direction": "string - how this would execute as a campaign"
     }
   ]
 }`,
@@ -110,12 +111,11 @@ Return JSON array:
       }
     }
 
-    // Save to stage
+    // Save to ai_generated only (HypothesisStage reads from ai_generated)
     await db!
       .from('campaign_stages')
       .update({
         ai_generated: { hypotheses },
-        user_input: { hypotheses },
         ai_status: 'completed',
         updated_at: new Date().toISOString(),
       })
