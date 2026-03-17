@@ -51,7 +51,7 @@ export default function IdeationRoomStage({ stageData, onSave, campaignId }: Sta
       const res = await fetch('/api/ai/generate-ideation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ campaign_id: campaignId }),
+        body: JSON.stringify({ campaignId }),
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));

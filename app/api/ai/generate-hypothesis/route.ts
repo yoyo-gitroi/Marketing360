@@ -1,15 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/api-auth'
-import { loadPrompt, interpolateTemplate } from '@/lib/ai/prompt-loader'
-import { callLLM, logLLMCall } from '@/lib/ai/orchestrator'
-import { buildCampaignContext, buildSectionContext } from '@/lib/ai/section-context'
-
-interface CampaignRow {
-  id: string
-  name: string
-  client_name: string | null
-  brand_book_id: string | null
-}
+import { callLLM } from '@/lib/ai/orchestrator'
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,79 +11,81 @@ export async function POST(request: NextRequest) {
     const { campaignId } = body
 
     if (!campaignId) {
-      return NextResponse.json(
-        { error: 'campaignId is required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'campaignId is required' }, { status: 400 })
     }
 
     // Get campaign details
-    const { data: campaignData } = await db!
+    const { data: campaign } = await db!
       .from('campaigns')
       .select('id, name, client_name, brand_book_id')
       .eq('id', campaignId)
       .single()
 
-    const campaign = campaignData as CampaignRow | null
     if (!campaign) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     }
 
-    // Load prompt
-    const promptKey = 'campaign.hypothesis'
-    const prompt = await loadPrompt(db!, promptKey)
-
-    // Build context from campaign brief and all research stages
-    const campaignContext = await buildCampaignContext(db!, campaignId, [
-      'brief',
-      'audience_research',
-      'market_research',
-      'competitor_research',
-      'cultural_trends',
-    ])
-
-    // Optionally load brand book context if linked
-    let brandContext: Record<string, Record<string, unknown>> = {}
+    // Build brand context
+    let brandContext = 'No brand book linked.'
     if (campaign.brand_book_id) {
-      brandContext = await buildSectionContext(db!, campaign.brand_book_id, [
-        'brand_essence',
-        'target_audience',
-        'brand_positioning',
-        'brand_values',
-      ])
+      const { data: brandSections } = await db!
+        .from('brand_book_sections')
+        .select('section_key, user_input, ai_generated, final_content')
+        .eq('brand_book_id', campaign.brand_book_id)
+
+      if (brandSections?.length) {
+        const brandData: Record<string, unknown> = {}
+        for (const s of brandSections) {
+          const content = (s.final_content && Object.keys(s.final_content).length > 0) ? s.final_content
+            : (s.user_input && Object.keys(s.user_input).length > 0) ? s.user_input : s.ai_generated
+          if (content && Object.keys(content).length > 0) brandData[s.section_key] = content
+        }
+        if (Object.keys(brandData).length > 0) brandContext = JSON.stringify(brandData)
+      }
     }
 
-    const userPrompt = interpolateTemplate(prompt.userPromptTemplate, {
-      campaign_brief: JSON.stringify(campaignContext),
-      brand_context: JSON.stringify(brandContext),
-      campaign_name: campaign.name,
-      client_name: campaign.client_name ?? '',
-    })
+    // Build context from prior stages
+    const { data: allStages } = await db!
+      .from('campaign_stages')
+      .select('stage_key, user_input, ai_generated')
+      .eq('campaign_id', campaignId)
+      .order('stage_number')
+
+    const priorData: Record<string, unknown> = {}
+    if (allStages) {
+      for (const stage of allStages) {
+        if (stage.stage_key === 'hypothesis' || stage.stage_key === 'ideation_room') continue
+        const content = (stage.user_input && Object.keys(stage.user_input).length > 0) ? stage.user_input : stage.ai_generated
+        if (content && Object.keys(content).length > 0) priorData[stage.stage_key] = content
+      }
+    }
 
     const result = await callLLM({
-      systemPrompt: prompt.systemPrompt,
-      userPrompt,
-      model: prompt.model,
-      maxTokens: prompt.maxTokens,
-      temperature: prompt.temperature,
-      orgId: user!.orgId,
-      userId: user!.id,
-      promptKey,
-      promptVersion: prompt.version,
-      relatedEntityType: 'campaign',
-      relatedEntityId: campaignId,
-    })
+      systemPrompt: 'You are a strategic marketing thinker. Generate creative campaign hypotheses. Return ONLY valid JSON.',
+      userPrompt: `Generate 3-5 campaign hypotheses for "${campaign.name}"${campaign.client_name ? ` (${campaign.client_name})` : ''}.
 
-    await logLLMCall(db!, {
+Brand context: ${brandContext}
+Campaign research: ${Object.keys(priorData).length > 0 ? JSON.stringify(priorData) : 'No prior data yet.'}
+
+Return JSON array:
+{
+  "hypotheses": [
+    {
+      "title": "string - hypothesis name",
+      "hypothesis": "string - If we... then... because...",
+      "rationale": "string - supporting rationale",
+      "risk_level": "low|medium|high",
+      "expected_impact": "string"
+    }
+  ]
+}`,
+      model: 'claude-sonnet-4-20250514',
+      maxTokens: 4096,
+      temperature: 0.7,
       orgId: user!.orgId,
       userId: user!.id,
-      promptKey,
-      promptVersion: prompt.version,
-      inputTokens: result.inputTokens,
-      outputTokens: result.outputTokens,
-      latencyMs: result.latencyMs,
-      status: 'error' in result ? 'error' : 'success',
-      errorMessage: 'error' in result ? result.error : null,
+      promptKey: 'campaign.hypothesis',
+      promptVersion: 1,
       relatedEntityType: 'campaign',
       relatedEntityId: campaignId,
     })
@@ -101,35 +94,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: result.error }, { status: 500 })
     }
 
-    // Parse structured hypotheses
     let hypotheses: unknown
     try {
-      hypotheses = JSON.parse(result.content)
+      const parsed = JSON.parse(result.content)
+      hypotheses = parsed.hypotheses || parsed
     } catch {
-      hypotheses = { raw: result.content }
+      const match = result.content.match(/\{[\s\S]*\}/)
+      if (match) {
+        try {
+          const parsed = JSON.parse(match[0])
+          hypotheses = parsed.hypotheses || parsed
+        } catch {
+          hypotheses = [{ title: 'Generated', hypothesis: result.content, rationale: '', risk_level: 'medium', expected_impact: '' }]
+        }
+      }
     }
 
-    // Save to campaign stage
+    // Save to stage
     await db!
       .from('campaign_stages')
-      .upsert(
-        {
-          campaign_id: campaignId,
-          stage_key: 'hypothesis',
-          stage_number: 4,
-          ai_generated: hypotheses as Record<string, unknown>,
-          ai_status: 'generated',
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'campaign_id,stage_key' }
-      )
+      .update({
+        ai_generated: { hypotheses },
+        user_input: { hypotheses },
+        ai_status: 'completed',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('campaign_id', campaignId)
+      .eq('stage_key', 'hypothesis')
 
-    return NextResponse.json({
-      hypotheses,
-      inputTokens: result.inputTokens,
-      outputTokens: result.outputTokens,
-      latencyMs: result.latencyMs,
-    })
+    return NextResponse.json({ hypotheses })
   } catch (error) {
     console.error('generate-hypothesis error:', error)
     return NextResponse.json(
