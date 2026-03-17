@@ -71,16 +71,23 @@ Return JSON:
 {
   "idea_sets": [
     {
-      "theme": "string - overarching idea theme",
-      "tagline": "string - campaign tagline",
-      "concept": "string - creative concept description",
-      "key_visual": "string - key visual description",
-      "hero_message": "string - hero messaging",
-      "channels": "string - recommended channels",
-      "viral_hook": "string - what makes it shareable"
+      "persona": "Gen Z Creative",
+      "persona_description": "Digital-native, meme-literate, values authenticity",
+      "ideas": [
+        {
+          "title": "string - idea title",
+          "format": "string - content format (video/carousel/story/etc)",
+          "hook": "string - attention-grabbing hook",
+          "hero_content": "string - main content description",
+          "surround": "string - supporting content",
+          "why_it_works": "string - strategic rationale"
+        }
+      ]
     }
   ]
-}`,
+}
+
+Generate 3 persona-based idea sets with 2-3 ideas each.`,
       model: 'claude-sonnet-4-20250514',
       maxTokens: 4096,
       temperature: 0.8,
@@ -112,12 +119,11 @@ Return JSON:
       }
     }
 
-    // Save to stage
+    // Save to ai_generated only (IdeationRoomStage reads from ai_generated)
     await db!
       .from('campaign_stages')
       .update({
         ai_generated: { idea_sets: ideaSets },
-        user_input: { idea_sets: ideaSets },
         ai_status: 'completed',
         updated_at: new Date().toISOString(),
       })

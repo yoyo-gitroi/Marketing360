@@ -59,6 +59,7 @@ interface Campaign {
   client_name: string | null;
   status: string;
   current_stage: number | null;
+  brand_book_id: string | null;
 }
 
 interface CampaignStage {
@@ -80,6 +81,7 @@ export default function CampaignEditorPage() {
 
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [stages, setStages] = useState<CampaignStage[]>([]);
+  const [brandSections, setBrandSections] = useState<Record<string, unknown>[]>([]);
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -105,9 +107,29 @@ export default function CampaignEditorPage() {
       if (campaignRes.error) throw campaignRes.error;
       if (stagesRes.error) throw stagesRes.error;
 
-      setCampaign(campaignRes.data as Campaign);
+      const campaignData = campaignRes.data as Campaign;
+      setCampaign(campaignData);
       setStages(stagesRes.data as CampaignStage[]);
-      setCurrentStep(campaignRes.data.current_stage || 1);
+      setCurrentStep(campaignData.current_stage || 1);
+
+      // Fetch brand book sections if a brand book is linked
+      if (campaignData.brand_book_id) {
+        const { data: bbSections } = await supabase
+          .from('brand_book_sections')
+          .select('section_key, user_input, ai_generated, final_content')
+          .eq('brand_book_id', campaignData.brand_book_id);
+
+        if (bbSections) {
+          setBrandSections(bbSections.map((s: Record<string, unknown>) => ({
+            section_key: s.section_key,
+            final_content: (s.final_content && typeof s.final_content === 'object' && Object.keys(s.final_content as object).length > 0)
+              ? s.final_content
+              : (s.user_input && typeof s.user_input === 'object' && Object.keys(s.user_input as object).length > 0)
+                ? s.user_input
+                : s.ai_generated || {},
+          })));
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load campaign');
     } finally {
@@ -327,7 +349,11 @@ export default function CampaignEditorPage() {
       <main className="max-w-7xl mx-auto px-6 py-6 pb-24">
         {StageComponent ? (
           <StageComponent
-            stageData={currentStageData || { user_input: {}, ai_generated: {}, final_content: {} }}
+            stageData={{
+              ...(currentStageData || { user_input: {}, ai_generated: {}, final_content: {} }),
+              ...(currentStageKey === 'brand_reference' ? { brand_sections: brandSections } : {}),
+              ...(currentStageKey === 'hypothesis' ? { all_stages: stages } : {}),
+            }}
             onSave={(data: Record<string, unknown>) => handleSave(currentStageKey, data)}
             campaignId={campaignId}
           />
