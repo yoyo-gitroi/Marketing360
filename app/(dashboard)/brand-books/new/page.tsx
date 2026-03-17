@@ -1,19 +1,54 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
+
+interface ClientOption {
+  id: string;
+  name: string;
+}
 
 export default function NewBrandBookPage() {
   const router = useRouter();
+  const supabase = createClient();
 
   const [name, setName] = useState('');
   const [clientName, setClientName] = useState('');
+  const [clientId, setClientId] = useState('');
+  const [clients, setClients] = useState<ClientOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    async function fetchClients() {
+      const meRes = await fetch('/api/me');
+      if (!meRes.ok) return;
+      const me = await meRes.json();
+
+      if (!me.org?.id) return;
+
+      const { data } = await supabase
+        .from('clients')
+        .select('id, name')
+        .eq('org_id', me.org.id)
+        .order('name');
+
+      setClients(data ?? []);
+    }
+
+    fetchClients();
+  }, [supabase]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    if (!clientId) {
+      setError('Please select a client.');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -38,6 +73,7 @@ export default function NewBrandBookPage() {
         body: JSON.stringify({
           name,
           clientName: clientName || null,
+          clientId,
           orgId: me.org.id,
         }),
       });
@@ -93,10 +129,40 @@ export default function NewBrandBookPage() {
 
         <div>
           <label
+            htmlFor="clientId"
+            className="block text-sm font-medium text-gray-700 mb-1"
+          >
+            Client <span className="text-red-500">*</span>
+          </label>
+          <select
+            id="clientId"
+            required
+            value={clientId}
+            onChange={(e) => {
+              if (e.target.value === '__new__') {
+                router.push('/clients/new');
+                return;
+              }
+              setClientId(e.target.value);
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value="">Select a client...</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+            <option value="__new__">+ Create new client</option>
+          </select>
+        </div>
+
+        <div>
+          <label
             htmlFor="clientName"
             className="block text-sm font-medium text-gray-700 mb-1"
           >
-            Client Name <span className="text-gray-400">(optional)</span>
+            Client Name <span className="text-gray-400">(optional override)</span>
           </label>
           <input
             id="clientName"

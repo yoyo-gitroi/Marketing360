@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAutoSave } from '@/lib/utils/auto-save';
 import { Plus, Trash2 } from 'lucide-react';
 import type { StageProps } from './CampaignBriefStage';
@@ -44,6 +44,22 @@ export default function CustomerIntelStage({ stageData, onSave }: StageProps) {
     (ui?.purchase_barriers as string[]) ?? ['']
   );
   const [customerInterviewNotes, setCustomerInterviewNotes] = useState<string>((ui?.customer_interview_notes as string) ?? '');
+
+  // Re-populate local state when stageData.user_input changes (e.g. after AI generation)
+  useEffect(() => {
+    const updated = stageData.user_input as Record<string, unknown> | undefined;
+    if (!updated || typeof updated !== 'object' || Object.keys(updated).length === 0) return;
+    setMarketplaceKeywords((updated.marketplace_keywords as MarketplaceKeyword[]) ?? [{ keyword: '', volume: '', intent: '' }]);
+    setGoogleKeywords((updated.google_keywords as GoogleKeyword[]) ?? [{ keyword: '', volume: '' }]);
+    setCustomerSentiment((updated.customer_sentiment as string) ?? '');
+    setOwnReviewThemes((updated.own_review_themes as string) ?? '');
+    setCompetitorReviewThemes((updated.competitor_review_themes as string) ?? '');
+    setHierarchyOfUse((updated.hierarchy_of_use as HierarchyItem[]) ?? [{ rank: 1, use_case: '', frequency: '' }]);
+    setPurchaseTriggers((updated.purchase_triggers as string[]) ?? ['']);
+    setPurchaseBarriers((updated.purchase_barriers as string[]) ?? ['']);
+    setCustomerInterviewNotes((updated.customer_interview_notes as string) ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(stageData.user_input)]);
 
   const formData = useMemo(
     () => ({

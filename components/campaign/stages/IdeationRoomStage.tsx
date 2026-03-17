@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Filter, Loader2, Plus, Sparkles } from 'lucide-react';
 import IdeaCard from '@/components/campaign/IdeaCard';
 import BrandFilterResults from '@/components/campaign/BrandFilterResults';
 import type { Idea } from '@/components/campaign/IdeaCard';
+import type { FeedbackValue } from '@/components/campaign/IdeaCard';
 import type { BrandFilterResult } from '@/components/campaign/BrandFilterResults';
 import type { StageProps } from './CampaignBriefStage';
 
@@ -30,6 +31,7 @@ export default function IdeationRoomStage({ stageData, onSave, campaignId }: Sta
   const [isGenerating, setIsGenerating] = useState(false);
   const [isFiltering, setIsFiltering] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [feedbackMap, setFeedbackMap] = useState<Record<string, FeedbackValue>>({});
 
   // Manual idea form
   const [showManualForm, setShowManualForm] = useState(false);
@@ -43,6 +45,30 @@ export default function IdeationRoomStage({ stageData, onSave, campaignId }: Sta
   });
 
   const makeIdeaId = (persona: string, title: string) => `${persona}::${title}`;
+
+  // Load feedback on mount
+  useEffect(() => {
+    async function loadFeedback() {
+      try {
+        const res = await fetch(`/api/ai/feedback?campaignId=${campaignId}&stageKey=ideation_room`);
+        if (res.ok) {
+          const data = await res.json();
+          const map: Record<string, FeedbackValue> = {};
+          for (const fb of data.feedback) {
+            if (fb.item_type === 'idea') {
+              // Key by persona::title for matching
+              const key = fb.persona ? `${fb.persona}::${fb.item_title}` : `idx::${fb.item_index}`;
+              map[key] = fb.feedback as FeedbackValue;
+            }
+          }
+          setFeedbackMap(map);
+        }
+      } catch {
+        // silently fail
+      }
+    }
+    loadFeedback();
+  }, [campaignId]);
 
   const handleGenerate = async () => {
     setIsGenerating(true);
@@ -61,6 +87,7 @@ export default function IdeationRoomStage({ stageData, onSave, campaignId }: Sta
       setIdeaSets((data as Record<string, unknown>).idea_sets as IdeaSet[]);
       setStarredIds(new Set());
       setBrandFilterResults([]);
+      setFeedbackMap({});
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate ideas');
     } finally {
@@ -90,7 +117,6 @@ export default function IdeationRoomStage({ stageData, onSave, campaignId }: Sta
     setIsFiltering(true);
     setError(null);
     try {
-      // Collect starred ideas
       const starredIdeas: { title: string; persona: string }[] = [];
       for (const set of ideaSets) {
         for (const idea of set.ideas) {
@@ -124,6 +150,39 @@ export default function IdeationRoomStage({ stageData, onSave, campaignId }: Sta
     }
   };
 
+  const handleFeedback = useCallback(
+    async (persona: string, title: string, itemIndex: number, feedback: 'thumbs_up' | 'thumbs_down') => {
+      const key = makeIdeaId(persona, title);
+      const currentFeedback = feedbackMap[key];
+      const newFeedback = currentFeedback === feedback ? null : feedback;
+
+      // Optimistic update
+      setFeedbackMap((prev) => ({ ...prev, [key]: newFeedback }));
+
+      if (newFeedback) {
+        try {
+          await fetch('/api/ai/feedback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              campaignId,
+              stageKey: 'ideation_room',
+              itemIndex,
+              itemTitle: title,
+              itemType: 'idea',
+              feedback: newFeedback,
+              persona,
+            }),
+          });
+        } catch {
+          // Revert on failure
+          setFeedbackMap((prev) => ({ ...prev, [key]: currentFeedback ?? null }));
+        }
+      }
+    },
+    [campaignId, feedbackMap]
+  );
+
   const addManualIdea = async () => {
     if (!manualIdea.title.trim()) return;
     const manualSet = ideaSets.find((s) => s.persona === 'Your Ideas');
@@ -139,6 +198,9 @@ export default function IdeationRoomStage({ stageData, onSave, campaignId }: Sta
     setManualIdea({ title: '', format: '', hook: '', hero_content: '', surround: '', why_it_works: '' });
     setShowManualForm(false);
   };
+
+  // Build a global idea index counter for feedback
+  let globalIdeaIndex = 0;
 
   return (
     <div className="space-y-8">
@@ -267,15 +329,21 @@ export default function IdeationRoomStage({ stageData, onSave, campaignId }: Sta
             )}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {set.ideas.map((idea) => (
-              <IdeaCard
-                key={idea.title}
-                idea={idea}
-                persona={set.persona}
-                isStarred={starredIds.has(makeIdeaId(set.persona, idea.title))}
-                onToggleStar={() => toggleStar(set.persona, idea.title)}
-              />
-            ))}
+            {set.ideas.map((idea) => {
+              const currentIndex = globalIdeaIndex++;
+              const feedbackKey = makeIdeaId(set.persona, idea.title);
+              return (
+                <IdeaCard
+                  key={idea.title}
+                  idea={idea}
+                  persona={set.persona}
+                  isStarred={starredIds.has(makeIdeaId(set.persona, idea.title))}
+                  onToggleStar={() => toggleStar(set.persona, idea.title)}
+                  feedback={feedbackMap[feedbackKey] ?? null}
+                  onFeedback={(fb) => handleFeedback(set.persona, idea.title, currentIndex, fb)}
+                />
+              );
+            })}
           </div>
         </div>
       ))}

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Star } from 'lucide-react';
+import { Star, ThumbsUp, ThumbsDown } from 'lucide-react';
 
 export interface Idea {
   title: string;
@@ -12,11 +12,15 @@ export interface Idea {
   why_it_works: string;
 }
 
+export type FeedbackValue = 'thumbs_up' | 'thumbs_down' | null;
+
 interface IdeaCardProps {
   idea: Idea;
   persona: string;
   isStarred: boolean;
   onToggleStar: () => void;
+  feedback?: FeedbackValue;
+  onFeedback?: (feedback: 'thumbs_up' | 'thumbs_down') => void;
 }
 
 const PERSONA_COLORS: Record<string, { bg: string; text: string; badge: string }> = {
@@ -30,6 +34,8 @@ export default function IdeaCard({
   persona,
   isStarred,
   onToggleStar,
+  feedback,
+  onFeedback,
 }: IdeaCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const colors = PERSONA_COLORS[persona] ?? {
@@ -51,21 +57,52 @@ export default function IdeaCard({
           <h4 className="text-base font-bold text-gray-900 truncate">{idea.title}</h4>
           <p className="text-sm text-gray-500 mt-0.5">{idea.format}</p>
         </div>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleStar();
-          }}
-          className="flex-shrink-0 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-          aria-label={isStarred ? 'Unstar idea' : 'Star idea'}
-        >
-          <Star
-            className={`w-5 h-5 transition-colors ${
-              isStarred ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'
-            }`}
-          />
-        </button>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {/* Feedback buttons */}
+          {onFeedback && (
+            <>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onFeedback('thumbs_up'); }}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  feedback === 'thumbs_up'
+                    ? 'bg-green-100 text-green-600'
+                    : 'text-gray-300 hover:bg-green-50 hover:text-green-500'
+                }`}
+                aria-label="Thumbs up"
+              >
+                <ThumbsUp className={`w-4 h-4 ${feedback === 'thumbs_up' ? 'fill-green-500' : ''}`} />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onFeedback('thumbs_down'); }}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  feedback === 'thumbs_down'
+                    ? 'bg-red-100 text-red-600'
+                    : 'text-gray-300 hover:bg-red-50 hover:text-red-500'
+                }`}
+                aria-label="Thumbs down"
+              >
+                <ThumbsDown className={`w-4 h-4 ${feedback === 'thumbs_down' ? 'fill-red-500' : ''}`} />
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleStar();
+            }}
+            className="flex-shrink-0 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+            aria-label={isStarred ? 'Unstar idea' : 'Star idea'}
+          >
+            <Star
+              className={`w-5 h-5 transition-colors ${
+                isStarred ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'
+              }`}
+            />
+          </button>
+        </div>
       </div>
 
       {/* Hook - always visible */}

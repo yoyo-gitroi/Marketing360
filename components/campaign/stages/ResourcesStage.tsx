@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAutoSave } from '@/lib/utils/auto-save';
 import { Plus, Trash2 } from 'lucide-react';
 import type { StageProps } from './CampaignBriefStage';
@@ -21,6 +21,18 @@ export default function ResourcesStage({ stageData, onSave }: StageProps) {
   const [partnerVendors, setPartnerVendors] = useState<PartnerVendor[]>(
     (ui?.partner_vendors as PartnerVendor[]) ?? [{ name: '', type: '', notes: '' }]
   );
+
+  // Re-populate local state when stageData.user_input changes (e.g. after AI generation)
+  useEffect(() => {
+    const updated = stageData.user_input as Record<string, unknown> | undefined;
+    if (!updated || typeof updated !== 'object' || Object.keys(updated).length === 0) return;
+    setTeamResources((updated.team_resources as string) ?? '');
+    setTimelineConstraints((updated.timeline_constraints as string) ?? '');
+    setProductionCapabilities((updated.production_capabilities as string) ?? '');
+    setAvailableAssets((updated.available_assets as string) ?? '');
+    setPartnerVendors((updated.partner_vendors as PartnerVendor[]) ?? [{ name: '', type: '', notes: '' }]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(stageData.user_input)]);
 
   const formData = useMemo(
     () => ({

@@ -9,12 +9,19 @@ interface BrandBookOption {
   name: string;
 }
 
+interface ClientOption {
+  id: string;
+  name: string;
+}
+
 export default function NewCampaignPage() {
   const router = useRouter();
   const supabase = createClient();
 
   const [name, setName] = useState('');
   const [clientName, setClientName] = useState('');
+  const [clientId, setClientId] = useState('');
+  const [clients, setClients] = useState<ClientOption[]>([]);
   const [brandBookId, setBrandBookId] = useState('');
   const [brandBookPdf, setBrandBookPdf] = useState<File | null>(null);
   const [sourceType, setSourceType] = useState<'existing' | 'pdf' | 'none'>('none');
@@ -24,7 +31,7 @@ export default function NewCampaignPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    async function fetchBrandBooks() {
+    async function fetchData() {
       const meRes = await fetch('/api/me');
       if (!meRes.ok) return;
       const me = await meRes.json();
@@ -32,21 +39,35 @@ export default function NewCampaignPage() {
       if (!me.org?.id) return;
       setOrgId(me.org.id);
 
-      const { data } = await supabase
-        .from('brand_books')
-        .select('id, name')
-        .eq('org_id', me.org.id)
-        .order('name');
+      const [bbResult, clientResult] = await Promise.all([
+        supabase
+          .from('brand_books')
+          .select('id, name')
+          .eq('org_id', me.org.id)
+          .order('name'),
+        supabase
+          .from('clients')
+          .select('id, name')
+          .eq('org_id', me.org.id)
+          .order('name'),
+      ]);
 
-      setBrandBooks(data ?? []);
+      setBrandBooks(bbResult.data ?? []);
+      setClients(clientResult.data ?? []);
     }
 
-    fetchBrandBooks();
+    fetchData();
   }, [supabase]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    if (!clientId) {
+      setError('Please select a client.');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -66,6 +87,7 @@ export default function NewCampaignPage() {
       const formData = new FormData();
       formData.append('name', name);
       formData.append('clientName', clientName || '');
+      formData.append('clientId', clientId);
       formData.append('orgId', orgId!);
       formData.append('sourceType', sourceType);
 
@@ -133,10 +155,40 @@ export default function NewCampaignPage() {
 
         <div>
           <label
+            htmlFor="clientId"
+            className="block text-sm font-medium text-gray-700 mb-1"
+          >
+            Client <span className="text-red-500">*</span>
+          </label>
+          <select
+            id="clientId"
+            required
+            value={clientId}
+            onChange={(e) => {
+              if (e.target.value === '__new__') {
+                router.push('/clients/new');
+                return;
+              }
+              setClientId(e.target.value);
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value="">Select a client...</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+            <option value="__new__">+ Create new client</option>
+          </select>
+        </div>
+
+        <div>
+          <label
             htmlFor="clientName"
             className="block text-sm font-medium text-gray-700 mb-1"
           >
-            Client Name
+            Client Name <span className="text-gray-400">(override)</span>
           </label>
           <input
             id="clientName"

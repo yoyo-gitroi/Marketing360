@@ -14,6 +14,7 @@ export interface Database {
           id: string
           name: string
           slug: string
+          domain: string | null
           created_at: string
           updated_at: string
         }
@@ -21,6 +22,7 @@ export interface Database {
           id?: string
           name: string
           slug: string
+          domain?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -28,6 +30,7 @@ export interface Database {
           id?: string
           name?: string
           slug?: string
+          domain?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -40,6 +43,10 @@ export interface Database {
           full_name: string
           email: string
           role: string
+          job_title: string | null
+          department: string | null
+          platform_usage: string[] | null
+          onboarding_completed: boolean
           created_at: string
         }
         Insert: {
@@ -48,6 +55,10 @@ export interface Database {
           full_name: string
           email: string
           role?: string
+          job_title?: string | null
+          department?: string | null
+          platform_usage?: string[] | null
+          onboarding_completed?: boolean
           created_at?: string
         }
         Update: {
@@ -56,6 +67,10 @@ export interface Database {
           full_name?: string
           email?: string
           role?: string
+          job_title?: string | null
+          department?: string | null
+          platform_usage?: string[] | null
+          onboarding_completed?: boolean
           created_at?: string
         }
         Relationships: [
@@ -115,6 +130,7 @@ export interface Database {
           status: string
           current_step: number
           pdf_url: string | null
+          client_id: string | null
           created_at: string
           updated_at: string
         }
@@ -128,6 +144,7 @@ export interface Database {
           status?: string
           current_step?: number
           pdf_url?: string | null
+          client_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -141,6 +158,7 @@ export interface Database {
           status?: string
           current_step?: number
           pdf_url?: string | null
+          client_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -228,6 +246,7 @@ export interface Database {
           status: string
           current_stage: number
           uploaded_brand_book_url: string | null
+          client_id: string | null
           created_at: string
           updated_at: string
         }
@@ -241,6 +260,7 @@ export interface Database {
           status?: string
           current_stage?: number
           uploaded_brand_book_url?: string | null
+          client_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -254,6 +274,7 @@ export interface Database {
           status?: string
           current_stage?: number
           uploaded_brand_book_url?: string | null
+          client_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -561,6 +582,238 @@ export interface Database {
             foreignKeyName: 'file_uploads_uploaded_by_fkey'
             columns: ['uploaded_by']
             referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      clients: {
+        Row: {
+          id: string
+          org_id: string
+          created_by: string
+          name: string
+          description: string | null
+          website: string | null
+          industry: string | null
+          logo_url: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          org_id: string
+          created_by: string
+          name: string
+          description?: string | null
+          website?: string | null
+          industry?: string | null
+          logo_url?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          org_id?: string
+          created_by?: string
+          name?: string
+          description?: string | null
+          website?: string | null
+          industry?: string | null
+          logo_url?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'clients_org_id_fkey'
+            columns: ['org_id']
+            referencedRelation: 'organizations'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'clients_created_by_fkey'
+            columns: ['created_by']
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      campaign_outputs: {
+        Row: {
+          id: string
+          campaign_id: string
+          org_id: string
+          generated_by: string
+          output_content: Record<string, unknown>
+          output_type: string
+          ai_model: string | null
+          input_tokens: number | null
+          output_tokens: number | null
+          status: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          campaign_id: string
+          org_id: string
+          generated_by: string
+          output_content?: Record<string, unknown>
+          output_type?: string
+          ai_model?: string | null
+          input_tokens?: number | null
+          output_tokens?: number | null
+          status?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          campaign_id?: string
+          org_id?: string
+          generated_by?: string
+          output_content?: Record<string, unknown>
+          output_type?: string
+          ai_model?: string | null
+          input_tokens?: number | null
+          output_tokens?: number | null
+          status?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'campaign_outputs_campaign_id_fkey'
+            columns: ['campaign_id']
+            referencedRelation: 'campaigns'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'campaign_outputs_org_id_fkey'
+            columns: ['org_id']
+            referencedRelation: 'organizations'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'campaign_outputs_generated_by_fkey'
+            columns: ['generated_by']
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      pending_invites: {
+        Row: {
+          id: string
+          org_id: string
+          email: string
+          role: string
+          invited_by: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          org_id: string
+          email: string
+          role?: string
+          invited_by: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          org_id?: string
+          email?: string
+          role?: string
+          invited_by?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'pending_invites_org_id_fkey'
+            columns: ['org_id']
+            referencedRelation: 'organizations'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'pending_invites_invited_by_fkey'
+            columns: ['invited_by']
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      ai_feedback: {
+        Row: {
+          id: string
+          org_id: string
+          user_id: string
+          campaign_id: string
+          stage_key: string
+          item_index: number
+          item_title: string
+          item_type: string
+          feedback: string
+          feedback_note: string | null
+          persona: string | null
+          hypothesis_title: string | null
+          ai_model: string | null
+          prompt_version: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          org_id: string
+          user_id: string
+          campaign_id: string
+          stage_key: string
+          item_index: number
+          item_title: string
+          item_type: string
+          feedback: string
+          feedback_note?: string | null
+          persona?: string | null
+          hypothesis_title?: string | null
+          ai_model?: string | null
+          prompt_version?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          org_id?: string
+          user_id?: string
+          campaign_id?: string
+          stage_key?: string
+          item_index?: number
+          item_title?: string
+          item_type?: string
+          feedback?: string
+          feedback_note?: string | null
+          persona?: string | null
+          hypothesis_title?: string | null
+          ai_model?: string | null
+          prompt_version?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'ai_feedback_org_id_fkey'
+            columns: ['org_id']
+            referencedRelation: 'organizations'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'ai_feedback_user_id_fkey'
+            columns: ['user_id']
+            referencedRelation: 'users'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'ai_feedback_campaign_id_fkey'
+            columns: ['campaign_id']
+            referencedRelation: 'campaigns'
             referencedColumns: ['id']
           },
         ]

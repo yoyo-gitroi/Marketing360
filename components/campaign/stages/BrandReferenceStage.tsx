@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAutoSave } from '@/lib/utils/auto-save';
 import { ChevronDown, ChevronRight, Upload } from 'lucide-react';
 import type { StageProps } from './CampaignBriefStage';
@@ -39,6 +39,16 @@ export default function BrandReferenceStage({ stageData, onSave }: StageProps) {
       return next;
     });
   };
+
+  // Re-populate local state when stageData.user_input changes (e.g. after AI generation)
+  useEffect(() => {
+    const updated = stageData.user_input as Record<string, unknown> | undefined;
+    if (!updated || typeof updated !== 'object' || Object.keys(updated).length === 0) return;
+    setTgOverride((updated.tg_override as string) ?? '');
+    setToneOverride((updated.tone_override as string) ?? '');
+    setVisualOverride((updated.visual_override as string) ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(stageData.user_input)]);
 
   const formData = useMemo(
     () => ({
