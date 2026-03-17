@@ -148,9 +148,20 @@ export default function BrandBookEditorPage() {
     [brandBookId]
   );
 
-  const handleAIGenerated = useCallback(() => {
-    fetchData();
-  }, [fetchData]);
+  const handleAIGenerated = useCallback(async () => {
+    // Silently refresh sections without showing full page loading spinner
+    try {
+      const { data } = await supabase
+        .from('brand_book_sections')
+        .select('*')
+        .eq('brand_book_id', brandBookId)
+        .order('section_key');
+      if (data) setSections(data as BrandBookSection[]);
+    } catch {
+      // Fallback to full refresh
+      fetchData();
+    }
+  }, [brandBookId, fetchData]);
 
   const currentSectionKey = SECTION_KEYS[currentStep - 1];
 
