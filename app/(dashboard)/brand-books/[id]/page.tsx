@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import StepWizard from '@/components/brand-book/StepWizard';
 import AIGenerateButton from '@/components/brand-book/AIGenerateButton';
-import { ChevronLeft, ChevronRight, BookOpen, Sparkles } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 
 const SECTION_KEYS = [
   'brand_identity',
@@ -152,27 +152,7 @@ export default function BrandBookEditorPage() {
     fetchData();
   }, [fetchData]);
 
-  const handleGenerateFullBook = useCallback(async () => {
-    try {
-      const res = await fetch('/api/ai/generate-full-brand-book', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brandBookId }),
-      });
-      if (!res.ok) throw new Error('Full generation failed');
-      await fetchData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Generation failed');
-    }
-  }, [brandBookId, fetchData]);
-
   const currentSectionKey = SECTION_KEYS[currentStep - 1];
-  const currentSection = sections.find((s) => s.section_key === currentSectionKey) || null;
-
-  const allStepsFilled = SECTION_KEYS.every((key) => {
-    const section = sections.find((s) => s.section_key === key);
-    return section && Object.keys(section.user_input).length > 0;
-  });
 
   if (loading) {
     return (
@@ -228,16 +208,6 @@ export default function BrandBookEditorPage() {
               sectionKey={currentSectionKey}
               onGenerated={handleAIGenerated}
             />
-
-            {allStepsFilled && (
-              <button
-                onClick={handleGenerateFullBook}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all shadow-sm"
-              >
-                <BookOpen className="h-4 w-4" />
-                Generate Full Brand Book
-              </button>
-            )}
           </div>
         </div>
       </header>

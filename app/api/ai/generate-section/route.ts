@@ -39,11 +39,24 @@ export async function POST(request: NextRequest) {
 
     const currentSection = sectionData as { user_input: Record<string, unknown> } | null
 
-    const userPrompt = interpolateTemplate(prompt.userPromptTemplate, {
+    // Build variables from user_input fields + context for template interpolation
+    const templateVars: Record<string, string> = {
       user_input: JSON.stringify(currentSection?.user_input ?? {}),
       context: JSON.stringify(contextData),
       section_key: sectionKey,
-    })
+    }
+    // Spread individual user_input fields so {{brand_name}}, {{industry}}, etc. work
+    if (currentSection?.user_input) {
+      for (const [key, value] of Object.entries(currentSection.user_input)) {
+        templateVars[key] = typeof value === 'string' ? value : JSON.stringify(value)
+      }
+    }
+    // Spread context fields for cross-section references
+    for (const [ctxKey, ctxValue] of Object.entries(contextData)) {
+      templateVars[ctxKey] = typeof ctxValue === 'string' ? ctxValue : JSON.stringify(ctxValue)
+    }
+
+    const userPrompt = interpolateTemplate(prompt.userPromptTemplate, templateVars)
 
     // Call LLM
     const result = await callLLM({
@@ -87,9 +100,11 @@ export async function POST(request: NextRequest) {
       aiGenerated = { content: result.content }
     }
 
+    // Save to BOTH user_input AND ai_generated so forms display the content
     const { error: updateError } = await db!
       .from('brand_book_sections')
       .update({
+        user_input: aiGenerated,
         ai_generated: aiGenerated,
         ai_status: 'generated',
         updated_at: new Date().toISOString(),
