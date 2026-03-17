@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import StepWizard from '@/components/brand-book/StepWizard';
 import AIGenerateButton from '@/components/brand-book/AIGenerateButton';
-import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Sparkles } from 'lucide-react';
 
 const SECTION_KEYS = [
   'brand_identity',
@@ -59,6 +59,7 @@ export default function BrandBookEditorPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const supabase = createClient();
@@ -136,12 +137,12 @@ export default function BrandBookEditorPage() {
   );
 
   const handleStepChange = useCallback(
-    (step: number) => {
+    async (step: number) => {
       if (step >= 1 && step <= 8) {
         setCurrentStep(step);
-        supabase
+        await supabase
           .from('brand_books')
-          .update({ current_step: step })
+          .update({ current_step: step, updated_at: new Date().toISOString() })
           .eq('id', brandBookId);
       }
     },
@@ -162,6 +163,38 @@ export default function BrandBookEditorPage() {
       fetchData();
     }
   }, [brandBookId, fetchData]);
+
+  const handleExportPPTX = useCallback(async () => {
+    setExporting(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/brand-books/export-pptx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brandBookId }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Export failed');
+      }
+
+      // Download the file
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${brandBook?.name || 'brand-book'}_Brand_Book.pptx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  }, [brandBookId, brandBook?.name]);
 
   const currentSectionKey = SECTION_KEYS[currentStep - 1];
 
@@ -213,6 +246,15 @@ export default function BrandBookEditorPage() {
             {saving && (
               <span className="text-sm text-gray-400 animate-pulse">Saving...</span>
             )}
+
+            <button
+              onClick={handleExportPPTX}
+              disabled={exporting}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors text-sm"
+            >
+              <Download className="h-4 w-4" />
+              {exporting ? 'Exporting...' : 'Export PPTX'}
+            </button>
 
             <AIGenerateButton
               brandBookId={brandBookId}

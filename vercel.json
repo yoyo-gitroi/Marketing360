@@ -1,7 +1,7 @@
 {
   "functions": {
     "app/api/ai/scrape-and-generate/route.ts": {
-      "maxDuration": 300
+      "maxDuration": 120
     },
     "app/api/ai/generate-section/route.ts": {
       "maxDuration": 60
