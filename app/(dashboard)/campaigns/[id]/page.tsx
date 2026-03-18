@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { ChevronLeft, ChevronRight, Sparkles, Loader2, Check } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Sparkles, Loader2, Check, CheckCircle2 } from 'lucide-react';
 
 import CampaignBriefStage from '@/components/campaign/stages/CampaignBriefStage';
 import BrandReferenceStage from '@/components/campaign/stages/BrandReferenceStage';
@@ -99,11 +99,7 @@ export default function CampaignEditorPage() {
 
       const [campaignRes, stagesRes] = await Promise.all([
         supabase.from('campaigns').select('*').eq('id', campaignId).single(),
-        supabase
-          .from('campaign_stages')
-          .select('*')
-          .eq('campaign_id', campaignId)
-          .order('stage_number'),
+        supabase.from('campaign_stages').select('*').eq('campaign_id', campaignId).order('stage_number'),
       ]);
 
       if (campaignRes.error) throw campaignRes.error;
@@ -114,19 +110,12 @@ export default function CampaignEditorPage() {
       setStages(stagesRes.data as CampaignStage[]);
       setCurrentStep(campaignData.current_stage || 1);
 
-      // Check if campaign has an output already
       if (campaignData.status === 'completed') {
         const { data: outputs } = await supabase
-          .from('campaign_outputs')
-          .select('id')
-          .eq('campaign_id', campaignId)
-          .limit(1);
-        if (outputs && outputs.length > 0) {
-          setHasOutput(true);
-        }
+          .from('campaign_outputs').select('id').eq('campaign_id', campaignId).limit(1);
+        if (outputs && outputs.length > 0) setHasOutput(true);
       }
 
-      // Fetch brand book sections if a brand book is linked
       if (campaignData.brand_book_id) {
         const { data: bbSections } = await supabase
           .from('brand_book_sections')
@@ -151,16 +140,13 @@ export default function CampaignEditorPage() {
     }
   }, [campaignId]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleSave = useCallback(
     async (stageKey: string, data: Record<string, unknown>) => {
       setSaving(true);
       try {
         const existing = stages.find((s) => s.stage_key === stageKey);
-
         if (existing) {
           const { error } = await supabase
             .from('campaign_stages')
@@ -176,17 +162,12 @@ export default function CampaignEditorPage() {
           });
           if (error) throw error;
         }
-
         await supabase
           .from('campaigns')
           .update({ current_stage: currentStep, updated_at: new Date().toISOString() })
           .eq('id', campaignId);
-
         const { data: updatedStages } = await supabase
-          .from('campaign_stages')
-          .select('*')
-          .eq('campaign_id', campaignId)
-          .order('stage_number');
+          .from('campaign_stages').select('*').eq('campaign_id', campaignId).order('stage_number');
         if (updatedStages) setStages(updatedStages as CampaignStage[]);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to save');
@@ -214,19 +195,16 @@ export default function CampaignEditorPage() {
     const stageKey = STAGE_KEYS[currentStep - 1];
     setAiLoading(true);
     setError(null);
-
     try {
       const res = await fetch('/api/ai/generate-campaign-output', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ campaignId, stageKey }),
       });
-
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || 'AI generation failed');
       }
-
       await fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Generation failed');
@@ -256,26 +234,29 @@ export default function CampaignEditorPage() {
     }
   }, [campaignId, router]);
 
+  const isStageCompleted = (idx: number) => {
+    const key = STAGE_KEYS[idx];
+    const stage = stages.find((s) => s.stage_key === key);
+    return stage && Object.keys(stage.user_input || {}).length > 0;
+  };
+
   const currentStageKey = STAGE_KEYS[currentStep - 1];
   const currentStageData = stages.find((s) => s.stage_key === currentStageKey);
   const StageComponent = STAGE_COMPONENTS[currentStageKey];
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" />
       </div>
     );
   }
 
   if (error && !campaign) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
         <p className="text-red-600">{error}</p>
-        <button
-          onClick={() => router.push('/campaigns')}
-          className="text-blue-600 hover:underline"
-        >
+        <button onClick={() => router.push('/campaigns')} className="text-blue-600 hover:underline">
           Back to Campaigns
         </button>
       </div>
@@ -283,158 +264,182 @@ export default function CampaignEditorPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => router.push('/campaigns')}
-              className="text-gray-500 hover:text-gray-700"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-            <div>
-              <h1 className="text-xl font-semibold text-gray-900">
-                {campaign?.name || 'Campaign'}
-              </h1>
-              {campaign?.client_name && (
-                <p className="text-sm text-gray-500">{campaign.client_name}</p>
-              )}
-            </div>
-          </div>
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
 
-          <div className="flex items-center gap-3">
-            {saving && (
-              <span className="text-sm text-gray-400 animate-pulse">Saving...</span>
-            )}
-
-            <button
-              onClick={handleAIGenerate}
-              disabled={aiLoading}
-              className="inline-flex items-center gap-2 px-4 py-2 border border-purple-300 text-purple-700 rounded-lg hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {aiLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Sparkles className="h-4 w-4" />
-              )}
-              {aiLoading ? 'Generating...' : 'Generate with AI'}
-            </button>
-          </div>
+      {/* ── Left Sidebar Navigation ── */}
+      <aside className="w-56 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
+        {/* Back + Campaign name */}
+        <div className="px-4 pt-4 pb-3 border-b border-gray-100">
+          <button
+            onClick={() => router.push('/campaigns')}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 mb-2 transition-colors"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+            Campaigns
+          </button>
+          <h1 className="text-sm font-semibold text-gray-900 leading-tight truncate">
+            {campaign?.name || 'Campaign'}
+          </h1>
+          {campaign?.client_name && (
+            <p className="text-xs text-gray-400 mt-0.5 truncate">{campaign.client_name}</p>
+          )}
         </div>
-      </header>
 
-      {/* Progress Indicator */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3">
-        <div className="max-w-7xl mx-auto">
-          <nav className="flex items-center gap-1 overflow-x-auto">
-            {STAGE_LABELS.map((label, idx) => {
-              const step = idx + 1;
-              const stageKey = STAGE_KEYS[idx];
-              const stage = stages.find((s) => s.stage_key === stageKey);
-              const isCompleted = stage && Object.keys(stage.user_input || {}).length > 0;
-              const isCurrent = step === currentStep;
+        {/* Stage list */}
+        <nav className="flex-1 overflow-y-auto py-3 px-2">
+          {STAGE_LABELS.map((label, idx) => {
+            const step = idx + 1;
+            const completed = isStageCompleted(idx);
+            const isCurrent = step === currentStep;
+            const stageKey = STAGE_KEYS[idx];
+            const stage = stages.find((s) => s.stage_key === stageKey);
+            const aiDone = stage?.ai_status === 'completed';
 
-              return (
-                <button
-                  key={label}
-                  onClick={() => handleStepChange(step)}
-                  className={`
-                    flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors
-                    ${isCurrent ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-300' : ''}
-                    ${isCompleted && !isCurrent ? 'text-green-700 hover:bg-green-50' : ''}
-                    ${!isCompleted && !isCurrent ? 'text-gray-500 hover:bg-gray-100' : ''}
-                  `}
-                >
-                  <span
-                    className={`
-                      flex items-center justify-center h-6 w-6 rounded-full text-xs font-bold
-                      ${isCurrent ? 'bg-blue-600 text-white' : ''}
-                      ${isCompleted && !isCurrent ? 'bg-green-500 text-white' : ''}
-                      ${!isCompleted && !isCurrent ? 'bg-gray-300 text-white' : ''}
-                    `}
-                  >
-                    {isCompleted && !isCurrent ? '\u2713' : step}
-                  </span>
-                  <span className="hidden sm:inline">{label}</span>
-                  {stage?.ai_status === 'completed' && (
-                    <Sparkles className="h-3 w-3 text-purple-500" />
+            return (
+              <button
+                key={label}
+                onClick={() => handleStepChange(step)}
+                className={`
+                  w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg mb-0.5 text-left transition-all
+                  ${isCurrent
+                    ? 'bg-blue-50 text-blue-700'
+                    : completed
+                      ? 'text-gray-700 hover:bg-gray-50'
+                      : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
+                  }
+                `}
+              >
+                <span className="flex-shrink-0">
+                  {completed && !isCurrent ? (
+                    <CheckCircle2 style={{ width: 18, height: 18 }} className="text-green-500" />
+                  ) : isCurrent ? (
+                    <span className="flex items-center justify-center w-[18px] h-[18px] rounded-full bg-blue-600 text-white text-[10px] font-bold">
+                      {step}
+                    </span>
+                  ) : (
+                    <span className="flex items-center justify-center w-[18px] h-[18px] rounded-full border-2 border-gray-200 text-[10px] font-medium text-gray-400">
+                      {step}
+                    </span>
                   )}
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-      </div>
+                </span>
 
-      {/* Error banner */}
-      {error && (
-        <div className="max-w-7xl mx-auto px-6 mt-4">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">
-            {error}
-            <button onClick={() => setError(null)} className="ml-2 underline">
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
+                <span className={`text-xs font-medium leading-tight flex-1 ${isCurrent ? 'text-blue-700' : ''}`}>
+                  {label}
+                </span>
 
-      {/* Stage Content */}
-      <main className="max-w-7xl mx-auto px-6 py-6 pb-24">
-        {StageComponent ? (
-          <StageComponent
-            stageData={{
-              ...(currentStageData || { user_input: {}, ai_generated: {}, final_content: {} }),
-              ...(currentStageKey === 'brand_reference' ? { brand_sections: brandSections } : {}),
-              ...(currentStageKey === 'hypothesis' ? { all_stages: stages } : {}),
-            }}
-            onSave={(data: Record<string, unknown>) => handleSave(currentStageKey, data)}
-            campaignId={campaignId}
-          />
-        ) : (
-          <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
-            <p className="text-gray-500">
-              Stage component for &quot;{STAGE_LABELS[currentStep - 1]}&quot; is coming soon.
+                {aiDone && (
+                  <Sparkles className="h-3 w-3 text-purple-400 flex-shrink-0" />
+                )}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* AI Generate + status at bottom */}
+        <div className="p-3 border-t border-gray-100">
+          {saving && (
+            <p className="text-xs text-center text-gray-400 animate-pulse mb-2">Saving...</p>
+          )}
+          <button
+            onClick={handleAIGenerate}
+            disabled={aiLoading}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-purple-200 text-purple-700 text-xs font-medium rounded-lg hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {aiLoading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+            {aiLoading ? 'Generating...' : 'Generate with AI'}
+          </button>
+        </div>
+      </aside>
+
+      {/* ── Main Content ── */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+
+        {/* Top bar */}
+        <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between flex-shrink-0">
+          <div>
+            <p className="text-xs text-gray-400 uppercase tracking-wider font-medium">
+              Stage {currentStep} of {totalSteps}
             </p>
+            <h2 className="text-base font-semibold text-gray-900 mt-0.5">
+              {STAGE_LABELS[currentStep - 1]}
+            </h2>
+          </div>
+          {/* Progress bar */}
+          <div className="flex items-center gap-3">
+            <div className="w-32 bg-gray-100 rounded-full h-1.5">
+              <div
+                className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+                style={{ width: `${(currentStep / totalSteps) * 100}%` }}
+              />
+            </div>
+            <span className="text-xs text-gray-400">{Math.round((currentStep / totalSteps) * 100)}%</span>
+          </div>
+        </header>
+
+        {/* Error banner */}
+        {error && (
+          <div className="mx-6 mt-4 bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm flex items-center justify-between">
+            {error}
+            <button onClick={() => setError(null)} className="ml-2 underline text-xs">Dismiss</button>
           </div>
         )}
-      </main>
 
-      {/* Completion loading modal */}
-      {completionLoading && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-8 max-w-sm mx-4 text-center shadow-xl">
-            <Loader2 className="h-10 w-10 animate-spin text-purple-600 mx-auto mb-4" />
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Generating Campaign Output</h3>
-            <p className="text-sm text-gray-500">
-              AI is synthesizing all your research, hypotheses, and ideas into a comprehensive campaign document. This may take a minute...
-            </p>
+        {/* Stage Content */}
+        <main className="flex-1 overflow-y-auto px-6 py-5 pb-20">
+          {StageComponent ? (
+            <StageComponent
+              stageData={{
+                ...(currentStageData || { user_input: {}, ai_generated: {}, final_content: {} }),
+                ...(currentStageKey === 'brand_reference' ? { brand_sections: brandSections } : {}),
+                ...(currentStageKey === 'hypothesis' ? { all_stages: stages } : {}),
+              }}
+              onSave={(data: Record<string, unknown>) => handleSave(currentStageKey, data)}
+              campaignId={campaignId}
+            />
+          ) : (
+            <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
+              <p className="text-gray-500">Stage &quot;{STAGE_LABELS[currentStep - 1]}&quot; is coming soon.</p>
+            </div>
+          )}
+        </main>
+
+        {/* Completion loading modal */}
+        {completionLoading && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-8 max-w-sm mx-4 text-center shadow-xl">
+              <Loader2 className="h-10 w-10 animate-spin text-purple-600 mx-auto mb-4" />
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Generating Campaign Output</h3>
+              <p className="text-sm text-gray-500">
+                AI is synthesizing all your research into a comprehensive campaign document. This may take a minute...
+              </p>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Navigation Footer */}
-      <footer className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-3 z-10">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+        {/* Bottom Navigation Footer */}
+        <footer className="bg-white border-t border-gray-200 px-6 py-3 flex items-center justify-between flex-shrink-0">
           <button
             onClick={() => handleStepChange(currentStep - 1)}
             disabled={currentStep === 1}
-            className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             <ChevronLeft className="h-4 w-4" />
             Previous
           </button>
 
-          <span className="text-sm text-gray-500">
-            Stage {currentStep} of {totalSteps}: {STAGE_LABELS[currentStep - 1]}
+          <span className="text-xs text-gray-400">
+            {STAGE_LABELS[currentStep - 1]}
           </span>
 
           {currentStep === totalSteps ? (
             hasOutput ? (
               <button
                 onClick={() => router.push(`/campaigns/${campaignId}/output`)}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition-colors"
               >
                 <Check className="h-4 w-4" />
                 View Campaign Output
@@ -443,27 +448,27 @@ export default function CampaignEditorPage() {
               <button
                 onClick={handleCompleteCampaign}
                 disabled={completionLoading}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {completionLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <Check className="h-4 w-4" />
                 )}
-                {completionLoading ? 'Generating Output...' : 'Generate Campaign Output'}
+                {completionLoading ? 'Generating...' : 'Generate Campaign Output'}
               </button>
             )
           ) : (
             <button
               onClick={() => handleStepChange(currentStep + 1)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
             >
               Next
               <ChevronRight className="h-4 w-4" />
             </button>
           )}
-        </div>
-      </footer>
+        </footer>
+      </div>
     </div>
   );
 }
