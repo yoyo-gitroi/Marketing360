@@ -121,7 +121,6 @@ export default function CampaignEditorPage() {
           .from('brand_book_sections')
           .select('section_key, user_input, ai_generated, final_content')
           .eq('brand_book_id', campaignData.brand_book_id);
-
         if (bbSections) {
           setBrandSections(bbSections.map((s: Record<string, unknown>) => ({
             section_key: s.section_key,
@@ -155,10 +154,7 @@ export default function CampaignEditorPage() {
           if (error) throw error;
         } else {
           const { error } = await supabase.from('campaign_stages').insert({
-            campaign_id: campaignId,
-            stage_key: stageKey,
-            stage_number: currentStep,
-            user_input: data,
+            campaign_id: campaignId, stage_key: stageKey, stage_number: currentStep, user_input: data,
           });
           if (error) throw error;
         }
@@ -224,7 +220,7 @@ export default function CampaignEditorPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to generate campaign output');
+        throw new Error(data.error || 'Failed to generate output');
       }
       router.push(`/campaigns/${campaignId}/output`);
     } catch (err) {
@@ -238,6 +234,38 @@ export default function CampaignEditorPage() {
     const key = STAGE_KEYS[idx];
     const stage = stages.find((s) => s.stage_key === key);
     return stage && Object.keys(stage.user_input || {}).length > 0;
+  };
+
+  // ── Build extra props per stage ──
+  const getStageExtraProps = (stageKey: StageKey): Record<string, unknown> => {
+    if (stageKey === 'brand_reference') {
+      return { brand_sections: brandSections };
+    }
+    if (stageKey === 'hypothesis') {
+      return { all_stages: stages };
+    }
+    if (stageKey === 'ideation_room') {
+      // Pull the selected hypothesis from hypothesis stage final_content
+      const hypothesisStage = stages.find((s) => s.stage_key === 'hypothesis');
+      const fc = hypothesisStage?.final_content as Record<string, unknown> | undefined;
+      let selectedHypothesis: Record<string, unknown> | null = null;
+
+      if (fc?.use_custom && fc?.custom_hypothesis) {
+        selectedHypothesis = {
+          title: 'Custom Hypothesis',
+          insight: fc.custom_hypothesis as string,
+          emotional_territory: '',
+          tg_reframe: '',
+          the_flip: '',
+          execution_direction: '',
+        };
+      } else if (fc?.selected_hypothesis) {
+        selectedHypothesis = fc.selected_hypothesis as Record<string, unknown>;
+      }
+
+      return { selected_hypothesis: selectedHypothesis };
+    }
+    return {};
   };
 
   const currentStageKey = STAGE_KEYS[currentStep - 1];
@@ -266,9 +294,8 @@ export default function CampaignEditorPage() {
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
 
-      {/* ── Left Sidebar Navigation ── */}
+      {/* ── Left Sidebar ── */}
       <aside className="w-56 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
-        {/* Back + Campaign name */}
         <div className="px-4 pt-4 pb-3 border-b border-gray-100">
           <button
             onClick={() => router.push('/campaigns')}
@@ -285,7 +312,6 @@ export default function CampaignEditorPage() {
           )}
         </div>
 
-        {/* Stage list */}
         <nav className="flex-1 overflow-y-auto py-3 px-2">
           {STAGE_LABELS.map((label, idx) => {
             const step = idx + 1;
@@ -322,34 +348,23 @@ export default function CampaignEditorPage() {
                     </span>
                   )}
                 </span>
-
                 <span className={`text-xs font-medium leading-tight flex-1 ${isCurrent ? 'text-blue-700' : ''}`}>
                   {label}
                 </span>
-
-                {aiDone && (
-                  <Sparkles className="h-3 w-3 text-purple-400 flex-shrink-0" />
-                )}
+                {aiDone && <Sparkles className="h-3 w-3 text-purple-400 flex-shrink-0" />}
               </button>
             );
           })}
         </nav>
 
-        {/* AI Generate + status at bottom */}
         <div className="p-3 border-t border-gray-100">
-          {saving && (
-            <p className="text-xs text-center text-gray-400 animate-pulse mb-2">Saving...</p>
-          )}
+          {saving && <p className="text-xs text-center text-gray-400 animate-pulse mb-2">Saving...</p>}
           <button
             onClick={handleAIGenerate}
             disabled={aiLoading}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-purple-200 text-purple-700 text-xs font-medium rounded-lg hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {aiLoading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Sparkles className="h-3.5 w-3.5" />
-            )}
+            {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
             {aiLoading ? 'Generating...' : 'Generate with AI'}
           </button>
         </div>
@@ -357,8 +372,6 @@ export default function CampaignEditorPage() {
 
       {/* ── Main Content ── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-
-        {/* Top bar */}
         <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between flex-shrink-0">
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wider font-medium">
@@ -368,7 +381,6 @@ export default function CampaignEditorPage() {
               {STAGE_LABELS[currentStep - 1]}
             </h2>
           </div>
-          {/* Progress bar */}
           <div className="flex items-center gap-3">
             <div className="w-32 bg-gray-100 rounded-full h-1.5">
               <div
@@ -380,7 +392,6 @@ export default function CampaignEditorPage() {
           </div>
         </header>
 
-        {/* Error banner */}
         {error && (
           <div className="mx-6 mt-4 bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm flex items-center justify-between">
             {error}
@@ -388,39 +399,33 @@ export default function CampaignEditorPage() {
           </div>
         )}
 
-        {/* Stage Content */}
         <main className="flex-1 overflow-y-auto px-6 py-5 pb-20">
           {StageComponent ? (
             <StageComponent
               stageData={{
                 ...(currentStageData || { user_input: {}, ai_generated: {}, final_content: {} }),
-                ...(currentStageKey === 'brand_reference' ? { brand_sections: brandSections } : {}),
-                ...(currentStageKey === 'hypothesis' ? { all_stages: stages } : {}),
+                ...getStageExtraProps(currentStageKey),
               }}
               onSave={(data: Record<string, unknown>) => handleSave(currentStageKey, data)}
               campaignId={campaignId}
             />
           ) : (
             <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
-              <p className="text-gray-500">Stage &quot;{STAGE_LABELS[currentStep - 1]}&quot; is coming soon.</p>
+              <p className="text-gray-500">Stage coming soon.</p>
             </div>
           )}
         </main>
 
-        {/* Completion loading modal */}
         {completionLoading && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-2xl p-8 max-w-sm mx-4 text-center shadow-xl">
               <Loader2 className="h-10 w-10 animate-spin text-purple-600 mx-auto mb-4" />
               <h3 className="text-lg font-bold text-gray-900 mb-2">Generating Campaign Output</h3>
-              <p className="text-sm text-gray-500">
-                AI is synthesizing all your research into a comprehensive campaign document. This may take a minute...
-              </p>
+              <p className="text-sm text-gray-500">AI is synthesizing all your research into a comprehensive campaign document...</p>
             </div>
           </div>
         )}
 
-        {/* Bottom Navigation Footer */}
         <footer className="bg-white border-t border-gray-200 px-6 py-3 flex items-center justify-between flex-shrink-0">
           <button
             onClick={() => handleStepChange(currentStep - 1)}
@@ -431,9 +436,7 @@ export default function CampaignEditorPage() {
             Previous
           </button>
 
-          <span className="text-xs text-gray-400">
-            {STAGE_LABELS[currentStep - 1]}
-          </span>
+          <span className="text-xs text-gray-400">{STAGE_LABELS[currentStep - 1]}</span>
 
           {currentStep === totalSteps ? (
             hasOutput ? (
@@ -448,13 +451,9 @@ export default function CampaignEditorPage() {
               <button
                 onClick={handleCompleteCampaign}
                 disabled={completionLoading}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
               >
-                {completionLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Check className="h-4 w-4" />
-                )}
+                {completionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 {completionLoading ? 'Generating...' : 'Generate Campaign Output'}
               </button>
             )
