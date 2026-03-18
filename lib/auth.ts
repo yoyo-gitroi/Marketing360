@@ -44,22 +44,10 @@ export const authOptions: NextAuthOptions = {
           .eq('domain', domain)
           .single()
 
+        let orgId: string | null = null
+
         if (existingOrg) {
-          // Auto-join existing org as member
-          const userId = crypto.randomUUID()
-          await db.from('users').insert({
-            id: userId,
-            email: user.email,
-            full_name: fullName,
-            org_id: existingOrg.id,
-            role: 'member',
-            onboarding_completed: false,
-          })
-          await db.from('org_members').insert({
-            user_id: userId,
-            org_id: existingOrg.id,
-            role: 'member',
-          })
+          orgId = existingOrg.id
         } else {
           // Create new org with the domain name
           const orgName = domain.split('.')[0]
@@ -87,27 +75,52 @@ export const authOptions: NextAuthOptions = {
             }
           }
 
-          const { data: org } = await db
+          const { data: org, error: orgError } = await db
             .from('organizations')
             .insert({ name: orgName, slug, domain })
             .select('id')
             .single()
 
-          if (org) {
-            const userId = crypto.randomUUID()
-            await db.from('users').insert({
-              id: userId,
-              email: user.email,
-              full_name: fullName,
-              org_id: org.id,
-              role: 'owner',
-              onboarding_completed: false,
-            })
-            await db.from('org_members').insert({
-              user_id: userId,
-              org_id: org.id,
-              role: 'owner',
-            })
+          if (orgError) {
+            console.error('Failed to create organization:', orgError)
+            return false
+          }
+
+          orgId = org?.id ?? null
+        }
+
+        if (!orgId) {
+          console.error('No org_id available for new user')
+          return false
+        }
+
+        // Create user record
+        const userId = crypto.randomUUID()
+        const role = existingOrg ? 'member' : 'owner'
+
+        const { error: userError } = await db.from('users').insert({
+          id: userId,
+          email: user.email,
+          full_name: fullName,
+          org_id: orgId,
+          role,
+          onboarding_completed: false,
+        })
+
+        if (userError) {
+          console.error('Failed to create user:', userError)
+          // Don't return false — allow sign-in; the user will be created
+          // via the onboarding flow as a fallback
+        } else {
+          // Create org membership
+          const { error: memberError } = await db.from('org_members').insert({
+            user_id: userId,
+            org_id: orgId,
+            role,
+          })
+
+          if (memberError) {
+            console.error('Failed to create org membership:', memberError)
           }
         }
       }
