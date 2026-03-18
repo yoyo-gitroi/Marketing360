@@ -8,6 +8,7 @@ interface AIGenerateButtonProps {
   sectionKey: string;
   onGenerated: (result?: unknown) => void;
   disabled?: boolean;
+  defaultDomain?: string;
 }
 
 export default function AIGenerateButton({
@@ -15,11 +16,12 @@ export default function AIGenerateButton({
   sectionKey,
   onGenerated,
   disabled = false,
+  defaultDomain = '',
 }: AIGenerateButtonProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
-  const [domain, setDomain] = useState('');
+  const [domain, setDomain] = useState(defaultDomain);
   const [progress, setProgress] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 

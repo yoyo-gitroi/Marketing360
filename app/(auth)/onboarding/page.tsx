@@ -26,6 +26,8 @@ export default function OnboardingPage() {
   const [jobTitle, setJobTitle] = useState('');
   const [department, setDepartment] = useState('');
   const [platformUsage, setPlatformUsage] = useState<string[]>([]);
+  const [organizationName, setOrganizationName] = useState('');
+  const [orgAutoDetected, setOrgAutoDetected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -43,6 +45,11 @@ export default function OnboardingPage() {
         if (data.user.onboarding_completed) {
           router.push('/');
           return;
+        }
+        // Pre-fill org name if auto-detected from domain
+        if (data.org?.name) {
+          setOrganizationName(data.org.name);
+          setOrgAutoDetected(true);
         }
       } catch {
         router.push('/login');
@@ -70,6 +77,11 @@ export default function OnboardingPage() {
       return;
     }
 
+    if (!organizationName.trim()) {
+      setError('Please enter your organization name.');
+      return;
+    }
+
     setSubmitting(true);
     try {
       const res = await fetch('/api/onboarding/complete', {
@@ -80,6 +92,7 @@ export default function OnboardingPage() {
           jobTitle: jobTitle.trim(),
           department,
           platformUsage,
+          organizationName: organizationName.trim(),
         }),
       });
 
@@ -143,6 +156,29 @@ export default function OnboardingPage() {
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
               placeholder="Your full name"
             />
+          </div>
+
+          {/* Organization Name */}
+          <div>
+            <label
+              htmlFor="organizationName"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
+              Organization Name
+            </label>
+            <input
+              id="organizationName"
+              type="text"
+              value={organizationName}
+              onChange={(e) => setOrganizationName(e.target.value)}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+              placeholder="Your organization name"
+            />
+            {orgAutoDetected && (
+              <p className="mt-1 text-xs text-gray-400">
+                Auto-detected from your email domain. Feel free to change it.
+              </p>
+            )}
           </div>
 
           {/* Role / Title */}

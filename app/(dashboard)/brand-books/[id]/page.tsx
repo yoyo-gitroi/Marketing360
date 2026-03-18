@@ -35,6 +35,7 @@ interface BrandBook {
   id: string;
   name: string;
   client_name: string | null;
+  client_id: string | null;
   status: string;
   current_step: number;
 }
@@ -59,6 +60,7 @@ export default function BrandBookEditorPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [clientWebsite, setClientWebsite] = useState('');
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -81,9 +83,22 @@ export default function BrandBookEditorPage() {
       if (bookRes.error) throw bookRes.error;
       if (sectionsRes.error) throw sectionsRes.error;
 
-      setBrandBook(bookRes.data as BrandBook);
+      const bookData = bookRes.data as BrandBook;
+      setBrandBook(bookData);
       setSections(sectionsRes.data as BrandBookSection[]);
-      setCurrentStep(bookRes.data.current_step || 1);
+      setCurrentStep(bookData.current_step || 1);
+
+      // Fetch client website if brand book has a client_id
+      if (bookData.client_id) {
+        const { data: client } = await supabase
+          .from('clients')
+          .select('website')
+          .eq('id', bookData.client_id)
+          .single();
+        if (client?.website) {
+          setClientWebsite(client.website);
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load brand book');
     } finally {
@@ -268,6 +283,7 @@ export default function BrandBookEditorPage() {
               brandBookId={brandBookId}
               sectionKey={currentSectionKey}
               onGenerated={handleAIGenerated}
+              defaultDomain={clientWebsite}
             />
           </div>
         </div>

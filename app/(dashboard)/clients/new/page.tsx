@@ -118,16 +118,20 @@ export default function NewClientPage() {
             htmlFor="website"
             className="block text-sm font-medium text-gray-700 mb-1"
           >
-            Website
+            Website / Domain <span className="text-red-500">*</span>
           </label>
           <input
             id="website"
             type="url"
+            required
             value={website}
             onChange={(e) => setWebsite(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
             placeholder="https://example.com"
           />
+          <p className="mt-1 text-xs text-gray-400">
+            This domain will be used for website scraping when generating brand books.
+          </p>
         </div>
 
         <div>

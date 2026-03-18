@@ -88,6 +88,7 @@ export default function CampaignEditorPage() {
   const [error, setError] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [completionLoading, setCompletionLoading] = useState(false);
+  const [hasOutput, setHasOutput] = useState(false);
 
   const totalSteps = STAGE_KEYS.length;
 
@@ -112,6 +113,18 @@ export default function CampaignEditorPage() {
       setCampaign(campaignData);
       setStages(stagesRes.data as CampaignStage[]);
       setCurrentStep(campaignData.current_stage || 1);
+
+      // Check if campaign has an output already
+      if (campaignData.status === 'completed') {
+        const { data: outputs } = await supabase
+          .from('campaign_outputs')
+          .select('id')
+          .eq('campaign_id', campaignId)
+          .limit(1);
+        if (outputs && outputs.length > 0) {
+          setHasOutput(true);
+        }
+      }
 
       // Fetch brand book sections if a brand book is linked
       if (campaignData.brand_book_id) {
@@ -418,18 +431,28 @@ export default function CampaignEditorPage() {
           </span>
 
           {currentStep === totalSteps ? (
-            <button
-              onClick={handleCompleteCampaign}
-              disabled={completionLoading}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {completionLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
+            hasOutput ? (
+              <button
+                onClick={() => router.push(`/campaigns/${campaignId}/output`)}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              >
                 <Check className="h-4 w-4" />
-              )}
-              {completionLoading ? 'Generating Output...' : 'Generate Campaign Output'}
-            </button>
+                View Campaign Output
+              </button>
+            ) : (
+              <button
+                onClick={handleCompleteCampaign}
+                disabled={completionLoading}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {completionLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4" />
+                )}
+                {completionLoading ? 'Generating Output...' : 'Generate Campaign Output'}
+              </button>
+            )
           ) : (
             <button
               onClick={() => handleStepChange(currentStep + 1)}

@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 interface Campaign {
   id: string;
   name: string;
   client_name: string | null;
+  client_id: string | null;
   status: string;
   updated_at: string | null;
   brand_book_id: string | null;
@@ -34,6 +36,36 @@ function formatDate(dateStr: string | null): string {
   });
 }
 
+interface ClientGroup {
+  clientName: string;
+  campaigns: Campaign[];
+}
+
+function groupByClient(campaigns: Campaign[]): ClientGroup[] {
+  const groups: Record<string, Campaign[]> = {};
+  const ungrouped: Campaign[] = [];
+
+  for (const c of campaigns) {
+    const key = c.client_name || '';
+    if (key) {
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(c);
+    } else {
+      ungrouped.push(c);
+    }
+  }
+
+  const result: ClientGroup[] = Object.entries(groups)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([clientName, camps]) => ({ clientName, campaigns: camps }));
+
+  if (ungrouped.length > 0) {
+    result.push({ clientName: 'No Client', campaigns: ungrouped });
+  }
+
+  return result;
+}
+
 export default function CampaignsPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -42,12 +74,12 @@ export default function CampaignsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     async function fetchCampaigns() {
       setLoading(true);
 
-      // Use /api/me to get org context (bypasses RLS for super admin)
       const meRes = await fetch('/api/me');
       if (!meRes.ok) {
         router.push('/login');
@@ -62,7 +94,7 @@ export default function CampaignsPage() {
 
       let query = supabase
         .from('campaigns')
-        .select('id, name, client_name, status, updated_at, brand_book_id, brand_books(name)')
+        .select('id, name, client_name, client_id, status, updated_at, brand_book_id, brand_books(name)')
         .eq('org_id', me.org.id)
         .order('updated_at', { ascending: false });
 
@@ -71,12 +103,29 @@ export default function CampaignsPage() {
       }
 
       const { data } = await query;
-      setCampaigns((data as Campaign[]) ?? []);
+      const camps = (data as Campaign[]) ?? [];
+      setCampaigns(camps);
+
+      // Expand all groups by default
+      const clientNames = new Set(camps.map((c: Campaign) => c.client_name || 'No Client'));
+      setExpandedClients(clientNames);
       setLoading(false);
     }
 
     fetchCampaigns();
   }, [statusFilter, supabase, router]);
+
+  function toggleClient(clientName: string) {
+    setExpandedClients((prev) => {
+      const next = new Set(prev);
+      if (next.has(clientName)) {
+        next.delete(clientName);
+      } else {
+        next.add(clientName);
+      }
+      return next;
+    });
+  }
 
   async function handleDelete(e: React.MouseEvent, c: Campaign) {
     e.stopPropagation();
@@ -105,6 +154,8 @@ export default function CampaignsPage() {
       setDeletingId(null);
     }
   }
+
+  const clientGroups = groupByClient(campaigns);
 
   return (
     <div>
@@ -145,77 +196,98 @@ export default function CampaignsPage() {
           <p className="text-gray-500 text-sm">Loading...</p>
         </div>
       ) : campaigns.length > 0 ? (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Name
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Client
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Brand Book
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Last Updated
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {campaigns.map((c) => (
-                <tr
-                  key={c.id}
-                  onClick={() => router.push(`/campaigns/${c.id}`)}
-                  className="hover:bg-gray-50 cursor-pointer transition-colors"
-                >
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                    {c.name}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    {c.client_name ?? '-'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${
-                        STATUS_COLORS[c.status] ?? 'bg-gray-100 text-gray-700'
-                      }`}
-                    >
-                      {c.status.replace(/_/g, ' ')}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    {c.brand_books?.name ?? '-'}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">
-                    {formatDate(c.updated_at)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={(e) => handleDelete(e, c)}
-                      disabled={deletingId === c.id}
-                      className="inline-flex items-center px-2 py-1 text-xs font-medium text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
-                    >
-                      {deletingId === c.id ? (
-                        'Deleting...'
-                      ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      )}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-4">
+          {clientGroups.map((group) => (
+            <div key={group.clientName} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              {/* Client Header */}
+              <button
+                onClick={() => toggleClient(group.clientName)}
+                className="w-full flex items-center justify-between px-5 py-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  {expandedClients.has(group.clientName) ? (
+                    <ChevronDown className="h-4 w-4 text-gray-500" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-gray-500" />
+                  )}
+                  <span className="text-sm font-semibold text-gray-900">
+                    {group.clientName}
+                  </span>
+                  <span className="text-xs text-gray-400 bg-gray-200 px-2 py-0.5 rounded-full">
+                    {group.campaigns.length} campaign{group.campaigns.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+              </button>
+
+              {/* Campaigns Table */}
+              {expandedClients.has(group.clientName) && (
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50/50">
+                    <tr>
+                      <th className="px-5 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Name
+                      </th>
+                      <th className="px-5 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-5 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Brand Book
+                      </th>
+                      <th className="px-5 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Last Updated
+                      </th>
+                      <th className="px-5 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {group.campaigns.map((c) => (
+                      <tr
+                        key={c.id}
+                        onClick={() => router.push(c.status === 'completed' ? `/campaigns/${c.id}/output` : `/campaigns/${c.id}`)}
+                        className="hover:bg-gray-50 cursor-pointer transition-colors"
+                      >
+                        <td className="px-5 py-3 text-sm font-medium text-gray-900">
+                          {c.name}
+                        </td>
+                        <td className="px-5 py-3">
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${
+                              STATUS_COLORS[c.status] ?? 'bg-gray-100 text-gray-700'
+                            }`}
+                          >
+                            {c.status.replace(/_/g, ' ')}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3 text-sm text-gray-600">
+                          {c.brand_books?.name ?? '-'}
+                        </td>
+                        <td className="px-5 py-3 text-sm text-gray-500">
+                          {formatDate(c.updated_at)}
+                        </td>
+                        <td className="px-5 py-3 text-right">
+                          <button
+                            onClick={(e) => handleDelete(e, c)}
+                            disabled={deletingId === c.id}
+                            className="inline-flex items-center px-2 py-1 text-xs font-medium text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                          >
+                            {deletingId === c.id ? (
+                              'Deleting...'
+                            ) : (
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            )}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          ))}
         </div>
       ) : (
         <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">

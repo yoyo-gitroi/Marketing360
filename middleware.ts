@@ -22,6 +22,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // Allow API routes and onboarding page through
+  if (pathname.startsWith('/api') || pathname.startsWith('/onboarding')) {
+    return NextResponse.next()
+  }
+
   return NextResponse.next()
 }
 
