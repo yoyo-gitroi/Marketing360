@@ -13,6 +13,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Client name is required' }, { status: 400 })
     }
 
+    if (!website?.trim()) {
+      return NextResponse.json({ error: 'Client website/domain is required' }, { status: 400 })
+    }
+
     const { data: client, error: createError } = await db!
       .from('clients')
       .insert({

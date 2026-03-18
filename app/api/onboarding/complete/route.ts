@@ -7,7 +7,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    const { fullName, jobTitle, department, platformUsage } = body
+    const { fullName, jobTitle, department, platformUsage, organizationName } = body
 
     if (!fullName || !jobTitle || !department || !platformUsage) {
       return NextResponse.json(
@@ -16,6 +16,7 @@ export async function POST(request: Request) {
       )
     }
 
+    // Update user profile
     const { error: updateError } = await db!
       .from('users')
       .update({
@@ -33,6 +34,19 @@ export async function POST(request: Request) {
         { error: 'Failed to update profile' },
         { status: 500 }
       )
+    }
+
+    // Update organization name if provided
+    if (organizationName?.trim() && user!.orgId) {
+      const { error: orgError } = await db!
+        .from('organizations')
+        .update({ name: organizationName.trim() })
+        .eq('id', user!.orgId)
+
+      if (orgError) {
+        console.error('Org name update error:', orgError)
+        // Non-fatal, profile is already saved
+      }
     }
 
     return NextResponse.json({ success: true })
