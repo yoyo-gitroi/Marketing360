@@ -73,6 +73,50 @@ interface CampaignStage {
   ai_status: string;
 }
 
+/**
+ * Extract the selected hypothesis from the hypothesis stage.
+ *
+ * HypothesisStage calls onSave({ final_content: {...} })
+ * The campaign editor's handleSave writes `data` → user_input column.
+ * So the selected hypothesis lives at:
+ *   user_input.final_content.selected_hypothesis  ← primary location
+ *   final_content.selected_hypothesis             ← fallback (direct column)
+ */
+function extractSelectedHypothesis(
+  hypothesisStage: CampaignStage | undefined
+): Record<string, unknown> | null {
+  if (!hypothesisStage) return null;
+
+  // Primary: HypothesisStage saves { final_content: {...} } into user_input
+  const ui = hypothesisStage.user_input as Record<string, unknown> | undefined;
+  const uiFc = ui?.final_content as Record<string, unknown> | undefined;
+
+  // Fallback: direct final_content column
+  const fc = hypothesisStage.final_content as Record<string, unknown> | undefined;
+
+  // Try primary first, then fallback
+  for (const source of [uiFc, fc]) {
+    if (!source) continue;
+
+    if (source.use_custom && source.custom_hypothesis) {
+      return {
+        title: 'Custom Hypothesis',
+        insight: source.custom_hypothesis as string,
+        emotional_territory: '',
+        tg_reframe: '',
+        the_flip: '',
+        execution_direction: '',
+      };
+    }
+
+    if (source.selected_hypothesis) {
+      return source.selected_hypothesis as Record<string, unknown>;
+    }
+  }
+
+  return null;
+}
+
 export default function CampaignEditorPage() {
   const params = useParams();
   const router = useRouter();
@@ -124,11 +168,12 @@ export default function CampaignEditorPage() {
         if (bbSections) {
           setBrandSections(bbSections.map((s: Record<string, unknown>) => ({
             section_key: s.section_key,
-            final_content: (s.final_content && typeof s.final_content === 'object' && Object.keys(s.final_content as object).length > 0)
-              ? s.final_content
-              : (s.user_input && typeof s.user_input === 'object' && Object.keys(s.user_input as object).length > 0)
-                ? s.user_input
-                : s.ai_generated || {},
+            final_content:
+              (s.final_content && typeof s.final_content === 'object' && Object.keys(s.final_content as object).length > 0)
+                ? s.final_content
+                : (s.user_input && typeof s.user_input === 'object' && Object.keys(s.user_input as object).length > 0)
+                  ? s.user_input
+                  : s.ai_generated || {},
           })));
         }
       }
@@ -236,7 +281,7 @@ export default function CampaignEditorPage() {
     return stage && Object.keys(stage.user_input || {}).length > 0;
   };
 
-  // ── Build extra props per stage ──
+  /** Build extra props injected into each stage component */
   const getStageExtraProps = (stageKey: StageKey): Record<string, unknown> => {
     if (stageKey === 'brand_reference') {
       return { brand_sections: brandSections };
@@ -245,24 +290,8 @@ export default function CampaignEditorPage() {
       return { all_stages: stages };
     }
     if (stageKey === 'ideation_room') {
-      // Pull the selected hypothesis from hypothesis stage final_content
       const hypothesisStage = stages.find((s) => s.stage_key === 'hypothesis');
-      const fc = hypothesisStage?.final_content as Record<string, unknown> | undefined;
-      let selectedHypothesis: Record<string, unknown> | null = null;
-
-      if (fc?.use_custom && fc?.custom_hypothesis) {
-        selectedHypothesis = {
-          title: 'Custom Hypothesis',
-          insight: fc.custom_hypothesis as string,
-          emotional_territory: '',
-          tg_reframe: '',
-          the_flip: '',
-          execution_direction: '',
-        };
-      } else if (fc?.selected_hypothesis) {
-        selectedHypothesis = fc.selected_hypothesis as Record<string, unknown>;
-      }
-
+      const selectedHypothesis = extractSelectedHypothesis(hypothesisStage);
       return { selected_hypothesis: selectedHypothesis };
     }
     return {};
@@ -321,6 +350,11 @@ export default function CampaignEditorPage() {
             const stage = stages.find((s) => s.stage_key === stageKey);
             const aiDone = stage?.ai_status === 'completed';
 
+            // Show a small "hypothesis linked" dot on ideation room if hypothesis is selected
+            const hypothesisLinked =
+              stageKey === 'ideation_room' &&
+              !!extractSelectedHypothesis(stages.find((s) => s.stage_key === 'hypothesis'));
+
             return (
               <button
                 key={label}
@@ -352,6 +386,9 @@ export default function CampaignEditorPage() {
                   {label}
                 </span>
                 {aiDone && <Sparkles className="h-3 w-3 text-purple-400 flex-shrink-0" />}
+                {hypothesisLinked && !aiDone && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 flex-shrink-0" title="Hypothesis linked" />
+                )}
               </button>
             );
           })}
@@ -421,7 +458,9 @@ export default function CampaignEditorPage() {
             <div className="bg-white rounded-2xl p-8 max-w-sm mx-4 text-center shadow-xl">
               <Loader2 className="h-10 w-10 animate-spin text-purple-600 mx-auto mb-4" />
               <h3 className="text-lg font-bold text-gray-900 mb-2">Generating Campaign Output</h3>
-              <p className="text-sm text-gray-500">AI is synthesizing all your research into a comprehensive campaign document...</p>
+              <p className="text-sm text-gray-500">
+                AI is synthesizing all your research into a comprehensive campaign document...
+              </p>
             </div>
           </div>
         )}
